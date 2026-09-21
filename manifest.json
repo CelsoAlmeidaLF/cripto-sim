@@ -1,9 +1,9 @@
 {
   "name": "Portfólio Cripto",
   "short_name": "Cripto",
-  "description": "Conversor e portfólio de criptomoedas com blockchain local",
-  "start_url": "./cripto-app.html",
-  "scope": "./cripto-app.html",
+  "description": "Conversor e portfólio de criptomoedas com blockchain local, simulador DCA e apuração fiscal",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0E1210",

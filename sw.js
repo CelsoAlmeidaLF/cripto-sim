@@ -1,9 +1,13 @@
-const CACHE_NAME = 'cripto-app-v16-scope-fix';
+const CACHE_NAME = 'cripto-app-v18';
 const APP_SHELL = [
+  './',
+  './index.html',
   './cripto-app.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './css/style.css',
+  './js/app.js',
 ];
 
 self.addEventListener('install', (event) => {
