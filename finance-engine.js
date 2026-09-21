@@ -119,8 +119,8 @@
   /* ---- Cálculos de Saldo e Carteira ---- */
   function computeCashBalance(deposits = [], trades = []) {
     const totalDeposited = deposits.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (Number(t.value) || 0) + (Number(t.fee) || 0), 0);
-    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (Number(t.value) || 0) - (Number(t.fee) || 0), 0);
+    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (Number(t.value) || 0), 0);
+    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (Number(t.value) || 0), 0);
     return totalDeposited - totalBuy + totalSell;
   }
 
@@ -132,8 +132,7 @@
         boughtCost: 0,
         soldQty: 0,
         soldProceeds: 0,
-        realized: 0,
-        totalFees: 0
+        realized: 0
       };
     });
 
@@ -143,17 +142,15 @@
       const s = perAsset[a];
       if (!s) return;
 
-      const fee = Number(t.fee) || 0;
       const qty = Number(t.qty) || 0;
       const price = Number(t.price) || 0;
-      s.totalFees += fee;
 
       if (t.type === 'buy') {
         s.boughtQty += qty;
-        s.boughtCost += (qty * price) + fee;
+        s.boughtCost += (qty * price);
       } else if (t.type === 'sell') {
         const avgCostAtSale = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        const netSaleProceeds = (qty * price) - fee;
+        const netSaleProceeds = (qty * price);
         const costBasisSold = avgCostAtSale * qty;
         s.realized += netSaleProceeds - costBasisSold;
         s.soldQty += qty;
@@ -205,7 +202,6 @@
       const s = running[a] || { boughtQty: 0, boughtCost: 0 };
       running[a] = s;
 
-      const fee = Number(t.fee) || 0;
       const qty = Number(t.qty) || 0;
       const price = Number(t.price) || 0;
 
@@ -214,10 +210,10 @@
 
       if (t.type === 'buy') {
         s.boughtQty += qty;
-        s.boughtCost += (qty * price) + fee;
+        s.boughtCost += (qty * price);
       } else if (t.type === 'sell') {
         const avgCost = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        const netProceedsUSD = (qty * price) - fee;
+        const netProceedsUSD = (qty * price);
         const costBasisUSD = qty * avgCost;
         const gainUSD = netProceedsUSD - costBasisUSD;
 
@@ -233,7 +229,6 @@
             asset: a,
             qty,
             price,
-            fee,
             proceedsUSD: netProceedsUSD,
             alienationBRL,
             gainBRL,

@@ -1030,26 +1030,24 @@
 
   function computeCashBalance() {
     const totalDeposited = deposits.reduce((s, d) => s + d.amount, 0);
-    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price) + (t.fee || 0), 0);
-    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price) - (t.fee || 0), 0);
+    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price), 0);
+    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price), 0);
     return totalDeposited - totalBuy + totalSell;
   }
   function computeSummary() {
     const perAsset = {};
-    ASSET_KEYS.forEach(a => { perAsset[a] = { boughtQty: 0, boughtCost: 0, soldQty: 0, soldProceeds: 0, realized: 0, totalFees: 0 }; });
+    ASSET_KEYS.forEach(a => { perAsset[a] = { boughtQty: 0, boughtCost: 0, soldQty: 0, soldProceeds: 0, realized: 0 }; });
     [...trades].sort((a, b) => a.timestamp - b.timestamp).forEach(t => {
       const s = perAsset[t.asset];
       if (!s) return;
-      const fee = t.fee || 0;
-      s.totalFees += fee;
       if (t.type === 'buy') {
         s.boughtQty += t.qty;
-        s.boughtCost += (t.qty * t.price) + fee;
+        s.boughtCost += (t.qty * t.price);
       } else {
         const avgCostAtSale = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        s.realized += ((t.price - avgCostAtSale) * t.qty) - fee;
+        s.realized += ((t.price - avgCostAtSale) * t.qty);
         s.soldQty += t.qty;
-        s.soldProceeds += (t.qty * t.price) - fee;
+        s.soldProceeds += (t.qty * t.price);
         s.boughtCost -= avgCostAtSale * t.qty;
         s.boughtQty -= t.qty;
       }
@@ -1346,17 +1344,15 @@
       totalValue += currentValue;
       totalGain += totalAssetGain;
       totalRealized += s.realized;
-      totalFees += (s.totalFees || 0);
 
       if (qty < 0.00000001 && s.realized === 0) return '';
-      const feesNote = s.totalFees ? ` · taxas pagas: ${fmt(s.totalFees, 'usd')}` : '';
       return `
         <div class="summary-row">
           <div style="display:flex; align-items:center;">
             ${avatarHtml(a)}
             <div>
               <div class="asset-name">${ASSETS[a].name}</div>
-              <div class="asset-meta">${qty > 0 ? fmtQty(qty, a) + ' em carteira · custo médio ' + fmt(avgCost, 'usd') : 'sem posição aberta'}${feesNote}</div>
+              <div class="asset-meta">${qty > 0 ? fmtQty(qty, a) + ' em carteira · custo médio ' + fmt(avgCost, 'usd') : 'sem posição aberta'}</div>
             </div>
           </div>
           <div class="figures">
@@ -1369,12 +1365,11 @@
 
     summaryCard.innerHTML = rows || '<div class="empty-note">Nenhuma operação registrada ainda.</div>';
     const totalUnrealized = totalGain - totalRealized;
-    if (hasHoldings || totalGain !== 0 || totalFees > 0) {
+    if (hasHoldings || totalGain !== 0) {
       summaryCard.innerHTML += `
         <div class="totals"><div class="label">Valor total em ativos</div><div class="value">${fmt(totalValue,'usd')}<div class="secondary">${fmtBRLSecondary(totalValue)}</div></div></div>
         <div class="totals"><div class="label">Lucro não-realizado (posições abertas)</div><div class="value" style="color:${totalUnrealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalUnrealized)}</div></div>
         <div class="totals"><div class="label">Lucro realizado (vendas encerradas)</div><div class="value" style="color:${totalRealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalRealized)}</div></div>
-        ${totalFees > 0 ? `<div class="totals"><div class="label">Taxas de corretagem totais</div><div class="value" style="color:var(--ink-dim);">${fmt(totalFees, 'usd')}</div></div>` : ''}
         <div class="totals" style="border-top:2px solid var(--line); font-weight:600;"><div class="label" style="color:var(--ink);">Resultado global líquido</div><div class="value" style="color:${totalGain >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalGain)}</div></div>`;
     }
     const netWorth = cashBalance + totalValue;
@@ -1394,13 +1389,12 @@
     const withBalances = computeRunningBalances();
     const sortedDesc = [...withBalances].sort((a, b) => b.timestamp - a.timestamp);
     historyCard.innerHTML = sortedDesc.length ? sortedDesc.map(t => {
-      const feeText = t.fee ? ` · taxa: ${fmt(t.fee, 'usd')}` : '';
       return `
       <div class="timeline-item">
         <div class="timeline-dot ${t.type}"></div>
         <div class="timeline-text">
           <div class="main">${t.type === 'buy' ? 'Compra' : 'Venda'} de ${fmt(t.value != null ? t.value : t.qty * t.price, 'usd')} em ${ASSETS[t.asset].name}</div>
-          <div class="sub">${fmtQty(t.qty, t.asset)} a ${fmt(t.price,'usd')}${feeText} · saldo após: ${fmtQty(Math.max(t.balanceAfter,0), t.asset)}</div>
+          <div class="sub">${fmtQty(t.qty, t.asset)} a ${fmt(t.price,'usd')} · saldo após: ${fmtQty(Math.max(t.balanceAfter,0), t.asset)}</div>
           <div class="sub" style="opacity:0.6;">${new Date(t.timestamp).toLocaleString('pt-BR')} · bloco #${t._index} · hash ${t._hash ? t._hash.slice(0,12) + '…' : '—'}</div>
         </div>
       </div>`;
@@ -1424,17 +1418,15 @@
     e.preventDefault();
     const asset = document.getElementById('assetSelect').value;
     const value = parseFloat(document.getElementById('valueInput').value);
-    const fee = parseFloat(document.getElementById('feeInput').value) || 0;
     const price = usdPrice[asset];
     if (!value || value <= 0 || !price) return;
 
-    const totalOutlay = currentType === 'buy' ? (value + fee) : value;
-    if (currentType === 'buy' && totalOutlay > computeCashBalance()) {
+    if (currentType === 'buy' && value > computeCashBalance()) {
       if (settings.blockOverdraft) {
-        document.getElementById('ioStatus').textContent = 'operação bloqueada: valor + taxa maior que o saldo disponível';
+        document.getElementById('ioStatus').textContent = 'operação bloqueada: valor maior que o saldo disponível';
         return;
       }
-      document.getElementById('ioStatus').textContent = 'atenção: valor da compra + taxa é maior que o saldo não alocado (saldo ficará negativo)';
+      document.getElementById('ioStatus').textContent = 'atenção: valor da compra é maior que o saldo não alocado (saldo ficará negativo)';
     } else {
       document.getElementById('ioStatus').textContent = '';
     }
@@ -1450,13 +1442,11 @@
       value,
       price,
       qty,
-      fee,
       timestamp: Date.now()
     });
     saveChain();
     trades = chainToTrades();
     document.getElementById('valueInput').value = '';
-    document.getElementById('feeInput').value = '';
     document.getElementById('qtyPreview').textContent = '';
     submitBtn.disabled = false;
     submitBtn.textContent = currentType === 'buy' ? 'Registrar compra' : 'Registrar venda';
@@ -1571,7 +1561,6 @@
         qty: d.amount,
         price: 1,
         totalValue: d.amount,
-        fee: 0,
         balanceAfter: '—',
         blockIndex: d._index != null ? d._index : '—',
         blockHash: d._hash || '—'
@@ -1590,7 +1579,6 @@
         qty: t.qty,
         price: t.price,
         totalValue: t.value != null ? t.value : t.qty * t.price,
-        fee: t.fee || 0,
         balanceAfter: t.balanceAfter != null ? t.balanceAfter.toFixed(6) : '—',
         blockIndex: t._index != null ? t._index : '—',
         blockHash: t._hash || '—'
@@ -1599,7 +1587,7 @@
 
     allEvents.sort((a, b) => a.timestamp - b.timestamp);
 
-    const headers = ['Data/Hora (ISO)', 'Data/Hora (Local)', 'Tipo', 'Ativo', 'Nome', 'Quantidade', 'Preço Unitário (USD)', 'Valor Total (USD)', 'Taxa / Fee (USD)', 'Saldo Posição Após', 'Bloco #', 'Hash do Bloco'];
+    const headers = ['Data/Hora (ISO)', 'Data/Hora (Local)', 'Tipo', 'Ativo', 'Nome', 'Quantidade', 'Preço Unitário (USD)', 'Valor Total (USD)', 'Saldo Posição Após', 'Bloco #', 'Hash do Bloco'];
     const csvLines = [headers.map(h => `"${h}"`).join(';')];
 
     allEvents.forEach(e => {
@@ -1612,7 +1600,6 @@
         typeof e.qty === 'number' ? e.qty.toFixed(8).replace('.', ',') : `"${e.qty}"`,
         typeof e.price === 'number' ? e.price.toFixed(4).replace('.', ',') : `"${e.price}"`,
         typeof e.totalValue === 'number' ? e.totalValue.toFixed(2).replace('.', ',') : `"${e.totalValue}"`,
-        typeof e.fee === 'number' ? e.fee.toFixed(2).replace('.', ',') : '0,00',
         `"${e.balanceAfter}"`,
         `"${e.blockIndex}"`,
         `"${e.blockHash}"`
@@ -1655,19 +1642,17 @@
           salesBrl: 0,
           realizedUsd: 0,
           realizedBrl: 0,
-          feesUsd: 0,
           operations: []
         };
       }
 
-      const fee = t.fee || 0;
       if (t.type === 'buy') {
         s.qty += t.qty;
-        s.cost += (t.qty * t.price) + fee;
+        s.cost += (t.qty * t.price);
       } else {
         const avgCost = s.qty > 0 ? (s.cost / s.qty) : 0;
         const saleProceedsUsd = t.value != null ? t.value : (t.qty * t.price);
-        const realizedGainUsd = ((t.price - avgCost) * t.qty) - fee;
+        const realizedGainUsd = ((t.price - avgCost) * t.qty);
         const saleProceedsBrl = saleProceedsUsd * brlRate;
         const realizedGainBrl = realizedGainUsd * brlRate;
 
@@ -1675,7 +1660,6 @@
         monthsData[mKey].salesBrl += saleProceedsBrl;
         monthsData[mKey].realizedUsd += realizedGainUsd;
         monthsData[mKey].realizedBrl += realizedGainBrl;
-        monthsData[mKey].feesUsd += fee;
 
         monthsData[mKey].operations.push({
           date: d,
@@ -1684,8 +1668,7 @@
           price: t.price,
           saleProceedsUsd,
           avgCost,
-          realizedGainUsd,
-          fee
+          realizedGainUsd
         });
 
         s.cost -= avgCost * t.qty;
@@ -1712,7 +1695,6 @@
       salesBrl: 0,
       realizedUsd: 0,
       realizedBrl: 0,
-      feesUsd: 0,
       operations: []
     };
 
@@ -1777,7 +1759,7 @@
             <div class="timeline-dot sell"></div>
             <div class="timeline-text">
               <div class="main">Venda de ${fmtQty(op.qty, op.asset)} (${ASSETS[op.asset].name})</div>
-              <div class="sub">Total: ${fmt(op.saleProceedsUsd, 'usd')} · Ganho: <span style="color:${op.realizedGainUsd >= 0 ? 'var(--up)' : 'var(--down)'};">${fmtGain(op.realizedGainUsd)}</span> ${op.fee ? `· Taxa: ${fmt(op.fee, 'usd')}` : ''}</div>
+              <div class="sub">Total: ${fmt(op.saleProceedsUsd, 'usd')} · Ganho: <span style="color:${op.realizedGainUsd >= 0 ? 'var(--up)' : 'var(--down)'};">${fmtGain(op.realizedGainUsd)}</span></div>
               <div class="sub" style="opacity:0.6;">${op.date.toLocaleString('pt-BR')}</div>
             </div>
           </div>
