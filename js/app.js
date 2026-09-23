@@ -598,6 +598,7 @@
       btn.classList.add('active');
       const panel = document.getElementById('panel-' + btn.dataset.tab);
       if (panel) panel.classList.add('active');
+      if (btn.dataset.tab === 'metas') renderTargetProfit();
       document.getElementById('tabsIndicator').style.transform = `translateX(${i * 100}%)`;
     });
   });
@@ -1385,7 +1386,6 @@
     renderNetWorthChart();
     renderDeposits();
     renderAlerts();
-    renderTargetProfit();
 
     const historyCard = document.getElementById('historyCard');
     const withBalances = computeRunningBalances();
@@ -1526,6 +1526,16 @@
   if (profitPeriodSelectEl) {
     profitPeriodSelectEl.addEventListener('change', renderTargetProfit);
   }
+
+  const targetProfitFormEl = document.getElementById('targetProfitForm');
+  if (targetProfitFormEl) {
+    targetProfitFormEl.addEventListener('submit', (event) => {
+      event.preventDefault();
+      renderTargetProfit();
+    });
+  }
+  // A meta depende apenas dos campos acima, sem aguardar carteira ou cotações.
+  renderTargetProfit();
 
   /* ---- exportar / importar ---- */
   document.getElementById('exportBtn').addEventListener('click', async () => {

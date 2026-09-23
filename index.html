@@ -282,10 +282,10 @@
           <div style="font-size:13px; color:var(--ink-dim); margin-bottom:16px; line-height:1.5;">
             Defina quanto você quer lucrar. O simulador calcula quanto capital é preciso alocar em cada perfil de mercado com margem de segurança contra quedas e volatilidade.
           </div>
-          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;">
+          <form id="targetProfitForm" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;">
             <div style="flex:1; min-width:160px;">
               <label for="profitTargetInput" style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-dim); display:block; margin-bottom:6px;">Lucro desejado (USD)</label>
-              <input type="number" id="profitTargetInput" value="4" min="0" step="any" placeholder="Ex: 4" style="width:100%; box-sizing:border-box; font-size:18px; font-weight:600;">
+              <input type="number" id="profitTargetInput" value="4" min="0" step="any" required placeholder="Ex: 4" style="width:100%; box-sizing:border-box; font-size:18px; font-weight:600;">
             </div>
             <div style="flex:1; min-width:180px;">
               <label for="profitPeriodSelect" style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-dim); display:block; margin-bottom:6px;">Periodicidade</label>
@@ -294,7 +294,8 @@
                 <option value="year">Por Ano (ex: U$ 48/ano)</option>
               </select>
             </div>
-          </div>
+            <button type="submit" id="calculateTargetProfitBtn" class="submit-btn">Calcular</button>
+          </form>
           <div style="overflow-x:auto;">
             <table class="target-table" style="width:100%; border-collapse:collapse; font-size:13.5px; text-align:left;">
               <thead>

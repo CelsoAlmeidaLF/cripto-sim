@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v18';
+const CACHE_NAME = 'cripto-app-v19';
 const APP_SHELL = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const APP_SHELL = [
   './icon-512.png',
   './css/style.css',
   './js/app.js',
+  './finance-engine.js',
 ];
 
 self.addEventListener('install', (event) => {
