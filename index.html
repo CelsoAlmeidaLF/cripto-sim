@@ -72,6 +72,7 @@
       <div class="tabs-indicator" id="tabsIndicator"></div>
       <button class="tab-btn active" data-tab="conversor">Conversor</button>
       <button class="tab-btn" data-tab="simulador">Portfólio</button>
+      <button class="tab-btn" data-tab="metas">Meta de Lucro</button>
     </div>
 
     <!-- CONVERSOR -->
@@ -269,11 +270,54 @@
       <button class="fab" id="fabAddTrade" title="Registrar operação" type="button">+</button>
     </div>
 
+    <!-- META DE LUCRO -->
+    <div class="tab-panel" id="panel-metas">
+      <header>
+        <div class="eyebrow">SIMULADOR REVERSO</div>
+        <h1>Meta de Lucro &amp; Capital</h1>
+      </header>
+
+      <section>
+        <div class="card" style="margin-bottom:20px;">
+          <div style="font-size:13px; color:var(--ink-dim); margin-bottom:16px; line-height:1.5;">
+            Defina quanto você quer lucrar. O simulador calcula quanto capital é preciso alocar em cada perfil de mercado com margem de segurança contra quedas e volatilidade.
+          </div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;">
+            <div style="flex:1; min-width:160px;">
+              <label for="profitTargetInput" style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-dim); display:block; margin-bottom:6px;">Lucro desejado (USD)</label>
+              <input type="number" id="profitTargetInput" value="4" min="0" step="any" placeholder="Ex: 4" style="width:100%; box-sizing:border-box; font-size:18px; font-weight:600;">
+            </div>
+            <div style="flex:1; min-width:180px;">
+              <label for="profitPeriodSelect" style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-dim); display:block; margin-bottom:6px;">Periodicidade</label>
+              <select id="profitPeriodSelect" style="width:100%; box-sizing:border-box; font-size:14px;">
+                <option value="month" selected>Por Mês (ex: U$ 4/mês = U$ 48/ano)</option>
+                <option value="year">Por Ano (ex: U$ 48/ano)</option>
+              </select>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="target-table" style="width:100%; border-collapse:collapse; font-size:13.5px; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--line); color:var(--ink-dim); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                  <th style="padding:12px 10px;">Cenário de Mercado</th>
+                  <th style="padding:12px 10px; text-align:center;">Rendimento Estimado</th>
+                  <th style="padding:12px 10px; text-align:right;">Capital em Dólares</th>
+                  <th style="padding:12px 10px; text-align:right;">Margem de Segurança</th>
+                </tr>
+              </thead>
+              <tbody id="targetProfitTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <footer>
       Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. Configure um PIN em "Segurança" para travar o acesso ao app. Arquivos exportados ou conectados podem ser protegidos por senha (criptografia AES-256). Ganho realizado considera o custo médio no momento de cada venda.
     </footer>
   </div>
 
+<script src="finance-engine.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

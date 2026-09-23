@@ -596,8 +596,9 @@
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
-      document.getElementById('tabsIndicator').style.transform = i === 0 ? 'translateX(0)' : 'translateX(100%)';
+      const panel = document.getElementById('panel-' + btn.dataset.tab);
+      if (panel) panel.classList.add('active');
+      document.getElementById('tabsIndicator').style.transform = `translateX(${i * 100}%)`;
     });
   });
 
@@ -1384,6 +1385,7 @@
     renderNetWorthChart();
     renderDeposits();
     renderAlerts();
+    renderTargetProfit();
 
     const historyCard = document.getElementById('historyCard');
     const withBalances = computeRunningBalances();
@@ -1461,6 +1463,69 @@
       ? `<span style="color:var(--up);">✓ íntegro</span> — ${chain.length} blocos verificados, encadeamento de hashes confere do início ao fim`
       : `<span style="color:var(--down);">✗ adulteração detectada</span> no bloco #${result.at} (${result.reason})`;
   });
+
+  /* ---- Calculadora de Meta de Lucro (Target Profit) ---- */
+  function renderTargetProfit() {
+    const tableBody = document.getElementById('targetProfitTableBody');
+    const targetInput = document.getElementById('profitTargetInput');
+    const periodSelect = document.getElementById('profitPeriodSelect');
+    if (!tableBody || !targetInput || !periodSelect) return;
+
+    const targetVal = parseFloat(targetInput.value);
+    const periodicity = periodSelect.value;
+    
+    const calcFn = (typeof calculateTargetProfitScenarios === 'function')
+      ? calculateTargetProfitScenarios
+      : (window.FinanceEngine && typeof window.FinanceEngine.calculateTargetProfitScenarios === 'function')
+        ? window.FinanceEngine.calculateTargetProfitScenarios
+        : null;
+
+    if (!calcFn) {
+      // Fallback seguro caso o script não tenha sido carregado
+      const rawTarget = Number(targetVal);
+      const target = isNaN(rawTarget) || rawTarget < 0 ? 0 : rawTarget;
+      const annualProfitUSD = String(periodicity).toLowerCase() === 'month' ? target * 12 : target;
+      const rows = [
+        { cenario: 'Conservador (Com folga)', rendimentoLabel: '5% a.a.', capitalUSD: annualProfitUSD / 0.05, margem: 'Alta proteção contra quedas' },
+        { cenario: 'Moderado', rendimentoLabel: '10% a.a.', capitalUSD: annualProfitUSD / 0.10, margem: 'Média de médio prazo' },
+        { cenario: 'Ciclo de Alta', rendimentoLabel: '15% a.a.', capitalUSD: annualProfitUSD / 0.15, margem: 'Depende de forte valorização' },
+        { cenario: 'Lending / Juros', rendimentoLabel: '2% a.a.', capitalUSD: annualProfitUSD / 0.02, margem: 'Renda passiva (sem vender moedas)' }
+      ];
+      tableBody.innerHTML = rows.map(row => `
+        <tr style="border-bottom:1px solid var(--line);">
+          <td style="padding:10px 8px; font-weight:600; color:var(--ink);">${row.cenario}</td>
+          <td style="padding:10px 8px; text-align:center; color:var(--ink-dim);">${row.rendimentoLabel}</td>
+          <td style="padding:10px 8px; text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);">
+            ${row.capitalUSD > 0 ? fmt(row.capitalUSD, 'usd') : '$0.00'}
+          </td>
+          <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.margem}</td>
+        </tr>
+      `).join('');
+      return;
+    }
+
+    const calc = calcFn(targetVal, periodicity);
+
+    tableBody.innerHTML = calc.rows.map(row => `
+      <tr style="border-bottom:1px solid var(--line);">
+        <td style="padding:10px 8px; font-weight:600; color:var(--ink);">${row.cenario}</td>
+        <td style="padding:10px 8px; text-align:center; color:var(--ink-dim);">${row.rendimentoEstimado}</td>
+        <td style="padding:10px 8px; text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);">
+          ${row.capitalUSD > 0 ? fmt(row.capitalUSD, 'usd') : '$0.00'}
+        </td>
+        <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.margemSeguranca}</td>
+      </tr>
+    `).join('');
+  }
+
+  const profitTargetInputEl = document.getElementById('profitTargetInput');
+  if (profitTargetInputEl) {
+    profitTargetInputEl.addEventListener('input', renderTargetProfit);
+  }
+  const profitPeriodSelectEl = document.getElementById('profitPeriodSelect');
+  if (profitPeriodSelectEl) {
+    profitPeriodSelectEl.addEventListener('change', renderTargetProfit);
+  }
 
   /* ---- exportar / importar ---- */
   document.getElementById('exportBtn').addEventListener('click', async () => {

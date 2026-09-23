@@ -299,6 +299,59 @@
     };
   }
 
+  /* ---- Calculadora de Meta de Lucro (Target Profit) ---- */
+  function calculateTargetProfitScenarios(targetAmountUSD, periodicity = 'month') {
+    const rawTarget = Number(targetAmountUSD);
+    const target = isNaN(rawTarget) || rawTarget < 0 ? 0 : rawTarget;
+    const isMonthly = String(periodicity).toLowerCase() === 'month';
+    const annualProfitUSD = isMonthly ? target * 12 : target;
+
+    const scenarios = [
+      {
+        cenario: 'Conservador (Com folga)',
+        rendimentoPct: 5,
+        rendimentoLabel: '5% a.a.',
+        margem: 'Alta proteção contra quedas'
+      },
+      {
+        cenario: 'Moderado',
+        rendimentoPct: 10,
+        rendimentoLabel: '10% a.a.',
+        margem: 'Média de médio prazo'
+      },
+      {
+        cenario: 'Ciclo de Alta',
+        rendimentoPct: 15,
+        rendimentoLabel: '15% a.a.',
+        margem: 'Depende de forte valorização'
+      },
+      {
+        cenario: 'Lending / Juros',
+        rendimentoPct: 2,
+        rendimentoLabel: '2% a.a.',
+        margem: 'Renda passiva (sem vender moedas)'
+      }
+    ];
+
+    const rows = scenarios.map(s => {
+      const rate = s.rendimentoPct / 100;
+      const capitalUSD = rate > 0 ? (annualProfitUSD / rate) : 0;
+      return {
+        cenario: s.cenario,
+        rendimentoEstimado: s.rendimentoLabel,
+        capitalUSD,
+        margemSeguranca: s.margem
+      };
+    });
+
+    return {
+      targetAmountUSD: target,
+      periodicity: isMonthly ? 'month' : 'year',
+      annualProfitUSD,
+      rows
+    };
+  }
+
   return {
     sha256Sync,
     computeBlockHash,
@@ -308,6 +361,7 @@
     computeCashBalance,
     computeSummary,
     computeTaxMonthSummary,
-    calculateDCASimulation
+    calculateDCASimulation,
+    calculateTargetProfitScenarios
   };
 });
