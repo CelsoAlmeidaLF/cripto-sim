@@ -1471,7 +1471,7 @@
   }
   document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
 
-  /* ---- modal de Relatório Fiscal & IRPF (IN 1888) ---- */
+  /* ---- modal de Relatório Fiscal & IRPF (DeCripto, IN RFB 2.291/2025) ---- */
   let selectedTaxMonth = '';
 
   function computeTaxReport() {
@@ -1552,7 +1552,7 @@
 
     const isExempt = current.salesBrl <= 35000;
     const estimatedTaxBrl = (!isExempt && current.realizedBrl > 0) ? (current.realizedBrl * 0.15) : 0;
-    const in1888Applies = current.salesBrl >= 30000;
+    const decriptoApplies = current.salesBrl > 35000;
 
     const content = document.getElementById('taxModalContent');
     content.innerHTML = `
@@ -1601,7 +1601,7 @@
         <strong>Regras da Receita Federal (Brasil):</strong><br>
         • Vendas totais de criptoativos em qualquer mês até R$ 35.000,00 contam com isenção sobre o ganho de capital.<br>
         • Se o valor de vendas ultrapassar R$ 35.000,00 no mês, todo o ganho de capital líquido é tributado a 15% (DARF 4600 com vencimento até o último dia útil do mês seguinte).<br>
-        ${in1888Applies ? '• <strong>Atenção IN 1888/2019:</strong> Volume mensal atingiu R$ 30.000,00 — pode exigir reporte no e-CAC se realizado em exchanges do exterior ou P2P.' : '• IN 1888/2019: Reporte obrigatório caso movimentações no exterior/P2P atinjam R$ 30.000,00/mês.'}
+        ${decriptoApplies ? '• <strong>Atenção DeCripto (IN RFB 2.291/2025):</strong> Volume mensal passou de R$ 35.000,00 — exige declaração mensal no e-CAC se realizado em exchanges do exterior, P2P ou DeFi.' : '• DeCripto (IN RFB 2.291/2025, desde jul/2026): declaração mensal obrigatória se movimentações no exterior/P2P/DeFi passarem de R$ 35.000,00/mês.'}
       </div>
 
       <div style="margin-top:16px;">
