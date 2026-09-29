@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v25-pin-autofill';
+const CACHE_NAME = 'cripto-app-v26-bio-passkey';
 const APP_SHELL = [
   './',
   './index.html',
