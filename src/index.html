@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="vault-locked" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-lock="bottom-left" data-vault-themes="system dark light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.coingecko.com https://api.binance.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'">
 <title>Cripto — Conversor &amp; Portfólio</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#171D1A">
@@ -14,24 +15,14 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="secure-ui.css">
 </head>
 <body>
-  <div class="lock-screen" id="lockScreen" style="display:none;">
-    <div class="lock-box">
-      <div class="eyebrow" style="text-align:center;">🔒 ACESSO PROTEGIDO</div>
-      <h1 style="text-align:center; font-size:22px; margin-bottom:20px;">Digite seu PIN</h1>
-      <input type="password" inputmode="numeric" pattern="[0-9]*" id="pinInput" maxlength="6" placeholder="••••" class="pin-input" autocomplete="off">
-      <div class="lock-error" id="lockError"></div>
-      <button class="submit-btn" id="unlockBtn" style="margin-top:14px;">Desbloquear</button>
-      <button class="icon-btn" id="biometricsUnlockBtn" type="button" style="width:100%; margin-top:10px; display:none; padding:12px;">👆 Desbloquear com Biometria</button>
-    </div>
-  </div>
-
   <div class="modal-overlay" id="securityModalOverlay" style="display:none;">
     <div class="modal-box">
       <div class="modal-header">
         <h1 style="font-size:20px; margin:0;">Segurança</h1>
-        <button class="modal-close" id="closeSecurityModalBtn" aria-label="Fechar" type="button">✕</button>
+        <button class="modal-close" id="closeSecurityModalBtn" aria-label="Fechar" type="button"><i data-icon="x" data-size="18"></i></button>
       </div>
       <div id="securityContent"></div>
     </div>
@@ -41,7 +32,7 @@
     <div class="modal-box">
       <div class="modal-header">
         <h1 style="font-size:20px; margin:0;">Certificado Digital do Aparelho</h1>
-        <button class="modal-close" id="closeCertModalBtn" aria-label="Fechar" type="button">✕</button>
+        <button class="modal-close" id="closeCertModalBtn" aria-label="Fechar" type="button"><i data-icon="x" data-size="18"></i></button>
       </div>
       <div id="certModalContent"></div>
     </div>
@@ -51,7 +42,7 @@
     <div class="modal-box" style="max-width:480px;">
       <div class="modal-header">
         <h1 style="font-size:20px; margin:0;">Relatório Fiscal &amp; IRPF</h1>
-        <button class="modal-close" id="closeTaxModalBtn" aria-label="Fechar" type="button">✕</button>
+        <button class="modal-close" id="closeTaxModalBtn" aria-label="Fechar" type="button"><i data-icon="x" data-size="18"></i></button>
       </div>
       <div id="taxModalContent"></div>
     </div>
@@ -61,7 +52,7 @@
     <div class="modal-box">
       <div class="modal-header">
         <h1 style="font-size:20px; margin:0;">Salvamento direto em arquivo</h1>
-        <button class="modal-close" id="closeFileAccessModalBtn" aria-label="Fechar" type="button">✕</button>
+        <button class="modal-close" id="closeFileAccessModalBtn" aria-label="Fechar" type="button"><i data-icon="x" data-size="18"></i></button>
       </div>
       <div id="fileAccessContent"></div>
     </div>
@@ -73,6 +64,7 @@
       <button class="tab-btn active" data-tab="conversor">Conversor</button>
       <button class="tab-btn" data-tab="simulador">Portfólio</button>
       <button class="tab-btn" data-tab="metas">Meta de Lucro</button>
+      <button class="tab-btn" data-tab="ajustes"><i data-icon="settings" data-size="15"></i> Ajustes</button>
     </div>
 
     <!-- CONVERSOR -->
@@ -94,7 +86,7 @@
       </div>
 
       <div class="search-wrap">
-        <input type="text" id="assetSearchInput" placeholder="🔍 Filtrar moedas por nome ou símbolo (ex: btc, sol, cardano)..." class="search-input">
+        <input type="text" id="assetSearchInput" placeholder="Filtrar moedas por nome ou símbolo (ex: btc, sol, cardano)..." class="search-input">
       </div>
 
       <div id="results"></div>
@@ -123,9 +115,9 @@
 
       <div class="portfolio-bar">
         <select id="portfolioSelect"></select>
-        <button class="icon-btn" id="newPortfolioBtn">+ Nova</button>
-        <button class="icon-btn" id="renamePortfolioBtn">Renomear</button>
-        <button class="icon-btn" id="deletePortfolioBtn">Excluir</button>
+        <button class="icon-btn" id="newPortfolioBtn"><i data-icon="plus" data-size="15"></i> Nova</button>
+        <button class="icon-btn" id="renamePortfolioBtn"><i data-icon="pencil" data-size="15"></i> Renomear</button>
+        <button class="icon-btn" id="deletePortfolioBtn"><i data-icon="trash" data-size="15"></i> Excluir</button>
       </div>
 
       <div id="alertBanners"></div>
@@ -135,16 +127,16 @@
           <div class="security-row" style="border-bottom:1px solid var(--line); padding:0 0 10px 0;">
             <div>
               <div class="label">Segurança</div>
-              <div class="desc">PIN de acesso, biometria e bloqueio do app</div>
+              <div class="desc">PIN de 6 números, criptografia local e bloqueio automático</div>
             </div>
-            <button class="icon-btn" id="openSecurityBtn">Configurar</button>
+            <button class="icon-btn" id="openSecurityBtn"><i data-icon="shield" data-size="15"></i> Configurar</button>
           </div>
           <div class="security-row" style="border-bottom:none; padding:0;">
             <div>
               <div class="label">Fiscal &amp; IRPF</div>
               <div class="desc">Alienações mensais (limite R$ 35k), apuração de ganho de capital e IN 1888</div>
             </div>
-            <button class="icon-btn" id="openTaxModalBtn">Ver Relatório</button>
+            <button class="icon-btn" id="openTaxModalBtn"><i data-icon="file-text" data-size="15"></i> Ver Relatório</button>
           </div>
         </div>
       </section>
@@ -253,21 +245,21 @@
         <h2>Histórico de operações <span style="font-size:11px; color:var(--ink-dim);">(blockchain local — imutável)</span></h2>
         <div class="card" id="historyCard"></div>
         <div class="io-buttons">
-          <button class="io-btn" id="verifyChainBtn">Verificar integridade</button>
+          <button class="io-btn" id="verifyChainBtn"><i data-icon="shield-check" data-size="15"></i> Verificar integridade</button>
         </div>
         <div class="status" id="chainStatus"></div>
         <div class="io-buttons">
-          <button class="io-btn" id="connectFileBtn">Conectar arquivo JSON</button>
-          <button class="io-btn" id="exportBtn">Exportar JSON</button>
-          <button class="io-btn" id="exportCsvBtn">Exportar CSV (Extrato)</button>
-          <button class="io-btn" id="importBtn">Importar JSON</button>
+          <button class="io-btn" id="connectFileBtn"><i data-icon="link" data-size="15"></i> Conectar arquivo JSON</button>
+          <button class="io-btn" id="exportBtn"><i data-icon="download" data-size="15"></i> Exportar JSON</button>
+          <button class="io-btn" id="exportCsvBtn"><i data-icon="file-text" data-size="15"></i> Exportar CSV (Extrato)</button>
+          <button class="io-btn" id="importBtn"><i data-icon="upload" data-size="15"></i> Importar JSON</button>
           <input type="file" id="importFile" accept="application/json">
         </div>
         <div class="status" id="ioStatus"></div>
         <div class="status" id="fileStatus"></div>
       </section>
 
-      <button class="fab" id="fabAddTrade" title="Registrar operação" type="button">+</button>
+      <button class="fab" id="fabAddTrade" title="Registrar operação" aria-label="Registrar operação" type="button"><i data-icon="plus" data-size="26"></i></button>
     </div>
 
     <!-- META DE LUCRO -->
@@ -313,12 +305,24 @@
       </section>
     </div>
 
+    <!-- AJUSTES -->
+    <div class="tab-panel" id="panel-ajustes">
+      <header>
+        <div class="eyebrow">CONFIGURAÇÕES</div>
+        <h1>Ajustes</h1>
+      </header>
+      <div id="settingsMount"></div>
+    </div>
+
     <footer>
-      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. Configure um PIN em "Segurança" para travar o acesso ao app. Arquivos exportados ou conectados podem ser protegidos por senha (criptografia AES-256). Ganho realizado considera o custo médio no momento de cada venda.
+      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. Configure um PIN em "Segurança" para travar o acesso ao app. Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
     </footer>
   </div>
 
 <script src="finance-engine.js"></script>
+<script src="financ-icons.js"></script>
+<script src="secure-vault.js"></script>
+<script src="secure-ui.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
