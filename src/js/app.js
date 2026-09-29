@@ -1324,9 +1324,9 @@
       alert('Criptografia indisponível neste navegador ou contexto não seguro (precisa de HTTPS ou localhost). Operação cancelada para proteger seus dados.');
       return;
     }
-    const password = await window.askSecret('Crie um PIN de 6 números para o backup:', true);
+    const password = await window.askSecret('Crie uma senha para o backup (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
     if (!password) {
-      document.getElementById('ioStatus').textContent = 'exportação cancelada: o PIN é obrigatório para criptografar todos os dados';
+      document.getElementById('ioStatus').textContent = 'exportação cancelada: a senha é obrigatória para criptografar todos os dados';
       return;
     }
     const data = { chain, deposits, netWorthHistory, alerts, settings };
@@ -1357,8 +1357,10 @@
     reader.onload = async () => {
       try {
         let imported = JSON.parse(reader.result);
+        // Backups antigos usam 150 mil iterações: abrem, mas vale exportar um novo (600 mil e senha longa).
+        const weakBackup = Boolean(imported && imported.encrypted && Number(imported.iterations ?? 150000) < 600000);
         if (imported && imported.encrypted) {
-          const password = await window.askSecret('PIN do backup (arquivos antigos podem usar senha):', false, true);
+          const password = await window.askSecret('Senha do backup (arquivos antigos podem usar PIN):', false, true);
           if (password === null) return;
           try {
             imported = await decryptJSON(imported, password);
@@ -1394,7 +1396,8 @@
         settings = imported.settings || settings;
         saveChain(); saveHistory(); saveAlerts(); saveSettings();
         renderSimulator();
-        document.getElementById('ioStatus').textContent = `${trades.length} operações e ${deposits.length} depósitos importados — integridade da blockchain verificada`;
+        document.getElementById('ioStatus').textContent = `${trades.length} operações e ${deposits.length} depósitos importados — integridade da blockchain verificada`
+          + (weakBackup ? '. Este backup usa a proteção antiga: exporte um novo backup para ficar com a proteção atual.' : '');
       } catch (err) {
         document.getElementById('ioStatus').textContent = 'arquivo inválido — não foi possível importar';
       }
@@ -1706,7 +1709,7 @@
       if (parsed && parsed.encrypted) {
         let pwd = connectedFilePassword;
         if (!pwd) {
-          pwd = await window.askSecret('PIN do arquivo (arquivos antigos podem usar senha):', false, true);
+          pwd = await window.askSecret('Senha do arquivo (arquivos antigos podem usar PIN):', false, true);
           if (pwd === null) return;
         }
         try {
@@ -1791,11 +1794,11 @@
           alert('Criptografia indisponível no navegador.');
           return;
         }
-        let pwd = await window.askSecret('Crie um PIN de 6 números para o arquivo:', true);
+        let pwd = await window.askSecret('Crie uma senha para o arquivo (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
         while (!pwd) {
-          pwd = await window.askSecret('Crie um PIN de 6 números para o arquivo:', true);
+          pwd = await window.askSecret('Crie uma senha para o arquivo (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
           if (pwd === null) {
-            document.getElementById('fileStatus').textContent = 'conexão cancelada — o PIN é obrigatório';
+            document.getElementById('fileStatus').textContent = 'conexão cancelada — a senha é obrigatória';
             return;
           }
         }
