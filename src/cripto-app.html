@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.4.1" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-lock="bottom-left" data-vault-themes="system dark light">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.5.0" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-themes="system dark light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -59,23 +59,24 @@
   </div>
 
   <div class="wrap" id="appWrap">
-    <div class="top-bar">
+    <header class="app-head">
       <div class="vp-bar" data-vault-profile-slot></div>
-      <div class="tabs">
-        <div class="tabs-indicator" id="tabsIndicator"></div>
-        <button class="tab-btn active" data-tab="conversor">Conversor</button>
-        <button class="tab-btn" data-tab="simulador">Portfólio</button>
-        <button class="tab-btn" data-tab="metas">Meta de Lucro</button>
+      <div class="app-head-text">
+        <div class="eyebrow" id="headEyebrow">CRIPTO · CONVERSOR AO VIVO</div>
+        <h1 id="headTitle">USD · BRL · Cripto</h1>
+        <p class="lede" id="headLede">Cotações de cripto em dólar e em real.</p>
       </div>
+    </header>
+
+    <div class="tabs">
+      <div class="tabs-indicator" id="tabsIndicator"></div>
+      <button class="tab-btn active" data-tab="conversor" data-eyebrow="CRIPTO · CONVERSOR AO VIVO" data-title="USD · BRL · Cripto" data-lede="Cotações de cripto em dólar e em real.">Conversor</button>
+      <button class="tab-btn" data-tab="simulador" data-eyebrow="CRIPTO · MEU PORTFÓLIO" data-title="Carteira Cripto" data-lede="Suas operações, saldo e resultado.">Portfólio</button>
+      <button class="tab-btn" data-tab="metas" data-eyebrow="CRIPTO · SIMULADOR REVERSO" data-title="Meta de Lucro &amp; Capital" data-lede="Quanto investir para chegar ao lucro desejado.">Meta de Lucro</button>
     </div>
 
     <!-- CONVERSOR -->
     <div class="tab-panel active" id="panel-conversor">
-      <header>
-        <div class="eyebrow">CONVERSOR AO VIVO</div>
-        <h1 id="conversorTitle">USD · BRL · Cripto</h1>
-      </header>
-
       <div class="card" style="margin-bottom:20px; border-radius:20px;">
         <div class="input-row">
           <input class="amount-input" id="amountInput" type="number" inputmode="decimal" value="1" min="0" step="any" style="font-size:32px;">
@@ -104,11 +105,6 @@
 
     <!-- PORTFÓLIO -->
     <div class="tab-panel" id="panel-simulador">
-      <header>
-        <div class="eyebrow">MEU PORTFÓLIO</div>
-        <h1>Carteira Cripto</h1>
-      </header>
-
       <div class="hero">
         <div class="hero-label">PATRIMÔNIO TOTAL</div>
         <div class="hero-amount" id="heroAmount">$0.00</div>
@@ -266,11 +262,6 @@
 
     <!-- META DE LUCRO -->
     <div class="tab-panel" id="panel-metas">
-      <header>
-        <div class="eyebrow">SIMULADOR REVERSO</div>
-        <h1>Meta de Lucro &amp; Capital</h1>
-      </header>
-
       <section>
         <div class="card" style="margin-bottom:20px;">
           <div style="font-size:13px; color:var(--ink-dim); margin-bottom:16px; line-height:1.5;">

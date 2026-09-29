@@ -333,7 +333,7 @@
   /* ============ TABS ============ */
   const tabButtonsList = Array.from(document.querySelectorAll('.tab-btn'));
   const tabsIndicator = document.getElementById('tabsIndicator');
-  // Acompanha o tamanho real da aba (a barra também tem o avatar do perfil).
+  // Acompanha o tamanho real de cada aba.
   function moveTabsIndicator(btn) {
     tabsIndicator.style.width = btn.offsetWidth + 'px';
     tabsIndicator.style.transform = `translateX(${btn.offsetLeft - tabsIndicator.offsetLeft}px)`;
@@ -347,6 +347,10 @@
       if (panel) panel.classList.add('active');
       if (btn.dataset.tab === 'metas') renderTargetProfit();
       moveTabsIndicator(btn);
+      // Cabeçalho padrão (⋮ + título) acompanha a aba.
+      document.getElementById('headEyebrow').textContent = btn.dataset.eyebrow;
+      document.getElementById('headTitle').textContent = btn.dataset.title;
+      document.getElementById('headLede').textContent = btn.dataset.lede;
     });
   });
   const activeTab = () => tabButtonsList.find(b => b.classList.contains('active')) || tabButtonsList[0];

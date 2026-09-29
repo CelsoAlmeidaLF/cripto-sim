@@ -11,8 +11,7 @@
   html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Space Grotesk', sans-serif; }
   .wrap { max-width: 700px; margin: 0 auto; padding: 28px 20px 60px; }
 
-  .top-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; }
-  .tabs { flex: 1; min-width: 0; display: flex; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; position: relative; }
+  .tabs { display: flex; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-bottom: 26px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; }
   .tabs-indicator { position: absolute; top: 4px; bottom: 4px; width: calc((100% - 8px) / 4); background: var(--surface-2); border-radius: 999px; left: 4px; transition: transform .25s ease; z-index: 0; }
   .tab-btn { flex: 1 1 auto; white-space: nowrap; position: relative; z-index: 1; padding: 11px 6px; border: none; border-radius: 999px; background: transparent; color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; font-size: 12px; cursor: pointer; text-align: center; }
   .tab-btn.active { color: var(--accent); }
