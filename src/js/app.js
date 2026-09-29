@@ -119,7 +119,7 @@
     const el = document.getElementById('certModalContent');
     el.innerHTML = `
       <div style="font-size:13.5px; line-height:1.6; color:var(--ink); margin-bottom:14px;">
-        ${FinancCert.linked ? 'Este aparelho usa o <strong>Certificado FINANC</strong>, o mesmo em todos os apps FINANC.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.'}
+        ${FinancCert.linked ? 'Este aparelho usa um <strong>certificado digital único</strong>, o mesmo em todos os apps.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.'}
         Se alguém descobrir seu PIN ou senha, <strong>ainda assim NÃO conseguirá abrir seu arquivo JSON</strong>
         em outro computador ou celular sem importar este arquivo de certificado antes.
       </div>
@@ -173,7 +173,7 @@
     });
 
     document.getElementById('regenCertBtn').addEventListener('click', async () => {
-      if (!confirm(FinancCert.linked ? 'Gerar um novo certificado FINANC? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
+      if (!confirm(FinancCert.linked ? 'Gerar um novo certificado? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
       if (FinancCert.linked) await FinancCert.regenerate();
       else { localStorage.removeItem(DEVICE_CERT_KEY); await ensureDeviceCert(); }
       await renderCertModal();
@@ -336,7 +336,7 @@
     { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
     { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
     { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
-    { icon: 'shield', label: 'Certificado FINANC', description: 'Segunda chave dos backups, a mesma em todos os apps.', onClick: () => openCertModal() },
+    { icon: 'shield', label: 'Certificado digital', description: 'Segunda chave dos backups, a mesma em todos os apps.', onClick: () => openCertModal() },
     { icon: 'file-text', label: 'Relatório fiscal e IRPF', description: 'Alienações mensais e ganho de capital.', onClick: clickById('openTaxModalBtn') },
   ] });
 
