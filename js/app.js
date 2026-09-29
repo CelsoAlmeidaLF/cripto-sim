@@ -332,7 +332,13 @@
 
   /* ============ TABS ============ */
   const tabButtonsList = Array.from(document.querySelectorAll('.tab-btn'));
-  tabButtonsList.forEach((btn, i) => {
+  const tabsIndicator = document.getElementById('tabsIndicator');
+  // Acompanha o tamanho real da aba (a barra também tem o avatar do perfil).
+  function moveTabsIndicator(btn) {
+    tabsIndicator.style.width = btn.offsetWidth + 'px';
+    tabsIndicator.style.transform = `translateX(${btn.offsetLeft - tabsIndicator.offsetLeft}px)`;
+  }
+  tabButtonsList.forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -340,10 +346,12 @@
       const panel = document.getElementById('panel-' + btn.dataset.tab);
       if (panel) panel.classList.add('active');
       if (btn.dataset.tab === 'metas') renderTargetProfit();
-      if (btn.dataset.tab === 'ajustes') FinancSettings.mount(document.getElementById('settingsMount'));
-      document.getElementById('tabsIndicator').style.transform = `translateX(${i * 100}%)`;
+      moveTabsIndicator(btn);
     });
   });
+  const activeTab = () => tabButtonsList.find(b => b.classList.contains('active')) || tabButtonsList[0];
+  moveTabsIndicator(activeTab());
+  window.addEventListener('resize', () => moveTabsIndicator(activeTab()));
 
   document.getElementById('fabAddTrade').addEventListener('click', () => {
     document.getElementById('registrarSection').scrollIntoView({ behavior: 'smooth', block: 'start' });

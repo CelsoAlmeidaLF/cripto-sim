@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.4.0" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-lock="bottom-left" data-vault-themes="system dark light">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.4.1" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-lock="bottom-left" data-vault-themes="system dark light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -59,13 +59,14 @@
   </div>
 
   <div class="wrap" id="appWrap">
-    <div class="tabs">
-      <div class="tabs-indicator" id="tabsIndicator"></div>
-      <button class="tab-btn active" data-tab="conversor">Conversor</button>
-      <button class="tab-btn" data-tab="simulador">Portfólio</button>
-      <button class="tab-btn" data-tab="metas">Meta de Lucro</button>
-      <button class="tab-btn" data-tab="ajustes"><i data-icon="settings" data-size="15"></i> Ajustes</button>
-      <div class="tabs-profile" data-vault-profile-slot></div>
+    <div class="top-bar">
+      <div class="vp-bar" data-vault-profile-slot></div>
+      <div class="tabs">
+        <div class="tabs-indicator" id="tabsIndicator"></div>
+        <button class="tab-btn active" data-tab="conversor">Conversor</button>
+        <button class="tab-btn" data-tab="simulador">Portfólio</button>
+        <button class="tab-btn" data-tab="metas">Meta de Lucro</button>
+      </div>
     </div>
 
     <!-- CONVERSOR -->
@@ -306,17 +307,8 @@
       </section>
     </div>
 
-    <!-- AJUSTES -->
-    <div class="tab-panel" id="panel-ajustes">
-      <header>
-        <div class="eyebrow">CONFIGURAÇÕES</div>
-        <h1>Ajustes</h1>
-      </header>
-      <div id="settingsMount"></div>
-    </div>
-
     <footer>
-      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. Configure um PIN em "Segurança" para travar o acesso ao app. Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
+      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. PIN, bloqueio automático e demais configurações ficam no menu do perfil (avatar no topo). Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
     </footer>
   </div>
 
