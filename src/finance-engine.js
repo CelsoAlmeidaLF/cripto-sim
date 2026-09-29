@@ -187,7 +187,7 @@
     };
   }
 
-  /* ---- Apuração Fiscal IRPF Cripto (IN 1888 - Brasil) ---- */
+  /* ---- Apuração Fiscal IRPF Cripto (Brasil; reporte via DeCripto, IN RFB 2.291/2025) ---- */
   function computeTaxMonthSummary(assetKeys, trades = [], targetYearMonth, brlPerUsd = 5.5) {
     const running = {};
     assetKeys.forEach(k => { running[k] = { boughtQty: 0, boughtCost: 0 }; });
