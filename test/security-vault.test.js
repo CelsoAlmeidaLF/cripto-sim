@@ -130,7 +130,7 @@ test('preferências são cifradas, validadas e sobrevivem ao bloqueio', async ()
   const storage = new MemoryStorage();
   const vault = new Vault(storage, 'cambio-sim');
   await vault.create('123456', {});
-  assert.deepEqual(vault.settings, { autoLockMinutes: 15, lockOnHide: false });
+  assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: false });
   await assert.rejects(vault.setSettings({ autoLockMinutes: 600 }));
   await assert.rejects(vault.setSettings({ lockOnHide: 'sim' }));
   await vault.setSettings({ autoLockMinutes: 5, lockOnHide: true });
@@ -144,7 +144,7 @@ test('preferências são cifradas, validadas e sobrevivem ao bloqueio', async ()
   env.settings.ciphertext = (env.settings.ciphertext[0] === 'A' ? 'B' : 'A') + env.settings.ciphertext.slice(1);
   storage.setItem(vault.storageKey, JSON.stringify(env));
   await vault.unlock('123456');
-  assert.deepEqual(vault.settings, { autoLockMinutes: 15, lockOnHide: false });
+  assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: false });
 });
 
 test('código de recuperação usado deixa de valer após redefinir o PIN', async () => {
