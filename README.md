@@ -1,28 +1,28 @@
-# 🪙 Cripto — Conversor & Portfólio PWA
+# Cripto — Conversor & Portfólio PWA
 
 > Aplicação web progressiva (PWA) client-side para conversão de moedas, gestão de carteira cripto com auditoria em blockchain local SHA-256, simulador DCA, apuração fiscal (IN 1888) e segurança criptográfica avançada com 2FA via certificado de dispositivo.
 
 ---
 
-## 📋 Sumário
+## Sumário
 
-- [Visão Geral](#-visão-geral)
-- [Funcionalidades Principais](#-funcionalidades-principais)
-- [Arquitetura & Segurança](#-arquitetura--segurança)
+- [Visão Geral](#visão-geral)
+- [Funcionalidades Principais](#funcionalidades-principais)
+- [Arquitetura & Segurança](#arquitetura--segurança)
   - [Blockchain Local SHA-256](#blockchain-local-sha-256)
   - [2FA Criptográfico & Certificado do Dispositivo](#2fa-criptográfico--certificado-do-dispositivo)
   - [Apuração Fiscal IRPF (IN 1888)](#apuração-fiscal-irpf-in-1888)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Como Executar](#-como-executar)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Como Executar](#como-executar)
   - [Navegador / Servidor Local](#navegador--servidor-local)
   - [Instalação como PWA](#instalação-como-pwa)
-- [Testes Automatizados](#-testes-automatizados)
-- [Tecnologias Utilizadas](#-tecnologias-utilizadas)
-- [Licença](#-licença)
+- [Testes Automatizados](#testes-automatizados)
+- [Tecnologias Utilizadas](#tecnologias-utilizadas)
+- [Licença](#licença)
 
 ---
 
-## 🌟 Visão Geral
+## Visão Geral
 
 O **Cripto** é um aplicativo financeiro *offline-first* focado em privacidade e soberania de dados. Não requer cadastro em servidores externos nem banco de dados em nuvem: todas as transações, chaves e históricos pertencem exclusivamente ao usuário e ficam armazenados localmente.
 
@@ -61,7 +61,7 @@ A aplicação combina um conversor com cotações em tempo real a um gerenciador
 
 ---
 
-## 🔒 Arquitetura & Segurança
+## Arquitetura & Segurança
 
 ### Blockchain Local SHA-256
 Para garantir que o histórico de operações financeiras não sofra adulteração acidental ou intencional no armazenamento local, o motor financeiro implementa uma **blockchain local encadeada**:
@@ -69,11 +69,14 @@ Para garantir que o histórico de operações financeiras não sofra adulteraç�
 - Gênese automática e encadeamento criptográfico contínuo (`hash = SHA256(index + timestamp + data + previousHash)`).
 - Rotina de verificação de integridade (`verifyChainIntegrity`) executada a cada carregamento e importação de arquivo.
 
-### 2FA Criptográfico & Certificado do Dispositivo
-- **Proteção por PIN**: Hashing com salt criptográfico único gerado via CSPRNG (`crypto.getRandomValues`).
-- **Autenticação Biométrica**: Suporte a WebAuthn / Passkeys (Touch ID, Face ID ou Windows Hello).
-- **Certificado Digital do Aparelho**: Geração de um par identificador/segredo único vinculado ao navegador.
-- **Backups Criptografados (AES-GCM 256)**: Os dados podem ser cifrados combinando a senha definida com o segredo do certificado local via PBKDF2 (150.000 iterações com SHA-256). Isso impede que um backup vazado seja decifrado sem a autorização do dispositivo originário.
+### Cofre local e certificado do dispositivo
+- **PIN numérico**: o acesso exige exatamente seis números; tentativas incorretas recebem atraso progressivo.
+- **Criptografia integral**: carteiras, operações, depósitos, histórico, alertas e configurações ficam em um único cofre AES-256-GCM autenticado.
+- **Derivação de chave**: PBKDF2-SHA-256 com 600.000 iterações e salt aleatório protege a chave de dados; a chave aberta existe apenas na memória da sessão.
+- **Recuperação**: um código aleatório, exibido uma única vez, permite definir outro PIN sem manter o PIN original.
+- **Bloqueio de sessão**: o cofre bloqueia após 15 minutos sem atividade e impede duas abas de editarem os mesmos dados ao mesmo tempo.
+- **Migração segura**: registros antigos só são removidos depois que a gravação criptografada é confirmada.
+- **Certificados e backups**: certificados, backups JSON e extratos exportados exigem PIN e usam AES-256-GCM; formatos antigos continuam importáveis para migração.
 
 ### Apuração Fiscal IRPF (IN 1888)
 O cálculo fiscal é executado em `src/finance-engine.js`:
@@ -83,7 +86,7 @@ O cálculo fiscal é executado em `src/finance-engine.js`:
 
 ---
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```text
 cripito-sim/
@@ -93,6 +96,9 @@ cripito-sim/
 │   ├── index.html             # Interface principal da aplicação
 │   ├── cripto-app.html        # Ponto de entrada PWA / standalone
 │   ├── finance-engine.js      # Motor financeiro universal (Node.js & Browser)
+│   ├── secure-vault.js        # Cofre AES-GCM e derivação de chave por PIN
+│   ├── secure-ui.js           # Bloqueio, recuperação e migração segura
+│   ├── secure-ui.css          # Interface de segurança integrada ao tema
 │   ├── manifest.json          # Manifesto PWA com metadados e ícones
 │   ├── sw.js                  # Service Worker com cache e modo offline
 │   ├── icon-192.png           # Ícone PWA (192x192)
@@ -100,16 +106,17 @@ cripito-sim/
 │   ├── css/
 │   │   └── style.css          # Estilização responsiva em tema escuro
 │   └── js/
-│       └── app.js             # Lógica de interface, Web Crypto, WebAuthn e DOM
+│       └── app.js             # Lógica de interface, Web Crypto e DOM
 └── test/
     ├── blockchain.test.js     # Testes de hash SHA-256 e integridade da blockchain
-    ├── cert-2fa.test.js       # Testes de derivação de chave e 2FA AES-GCM
+    ├── cert-2fa.test.js       # Compatibilidade de certificados e backups antigos
+    ├── security-vault.test.js # Testes do cofre, PIN, migração e adulteração
     └── financial.test.js      # Testes de caixa, custo médio, IRPF e DCA
 ```
 
 ---
 
-## 🚀 Como Executar
+## Como Executar
 
 ### Navegador / Servidor Local
 
@@ -135,7 +142,7 @@ http://localhost:8080
 
 ---
 
-## 🧪 Testes Automatizados
+## Testes Automatizados
 
 O projeto utiliza o runner de testes nativo do Node.js (`node:test`), não dependendo de pacotes externos no `node_modules`:
 
@@ -160,7 +167,7 @@ node --test test/*.test.js
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 - **Frontend Core**: HTML5 Semântico, CSS3 Moderno (CSS Variables, Flexbox, Grid), JavaScript Moderno (ES6+).
 - **Tipografia**: Space Grotesk & IBM Plex Mono via Google Fonts.
@@ -171,6 +178,6 @@ node --test test/*.test.js
 
 ---
 
-## 📄 Licença
+## Licença
 
 Este projeto é software livre distribuído sob os termos da licença [GNU General Public License v3.0 (GPL-3.0)](LICENSE).

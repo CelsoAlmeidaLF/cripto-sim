@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v19';
+const CACHE_NAME = 'cripto-app-v25-pin-autofill';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,6 +9,10 @@ const APP_SHELL = [
   './css/style.css',
   './js/app.js',
   './finance-engine.js',
+  './secure-vault.js',
+  './secure-ui.js',
+  './secure-ui.css',
+  './financ-icons.js',
 ];
 
 self.addEventListener('install', (event) => {
