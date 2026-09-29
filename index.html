@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.5.1" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-themes="system dark light">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.5.2" data-vault-app="cripito-sim" data-vault-name="Cripto" data-vault-themes="system dark light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -122,13 +122,8 @@
 
       <section>
         <div class="card" style="display:flex; flex-direction:column; gap:10px;">
-          <div class="security-row" style="border-bottom:1px solid var(--line); padding:0 0 10px 0;">
-            <div>
-              <div class="label">Segurança</div>
-              <div class="desc">PIN de 6 números, criptografia local e bloqueio automático</div>
-            </div>
-            <button class="icon-btn" id="openSecurityBtn"><i data-icon="shield" data-size="15"></i> Configurar</button>
-          </div>
+          <!-- Segurança fica em Configurações (menu ⋮); o botão segue aqui, oculto, para o app.js. -->
+          <button class="icon-btn" id="openSecurityBtn" style="display:none"></button>
           <div class="security-row" style="border-bottom:none; padding:0;">
             <div>
               <div class="label">Fiscal &amp; IRPF</div>
@@ -246,7 +241,8 @@
           <button class="io-btn" id="verifyChainBtn"><i data-icon="shield-check" data-size="15"></i> Verificar integridade</button>
         </div>
         <div class="status" id="chainStatus"></div>
-        <div class="io-buttons">
+        <!-- Backup e arquivo ficam em Configurações (menu ⋮), que aciona estes botões ocultos. -->
+        <div class="io-buttons" style="display:none">
           <button class="io-btn" id="connectFileBtn"><i data-icon="link" data-size="15"></i> Conectar arquivo JSON</button>
           <button class="io-btn" id="exportBtn"><i data-icon="download" data-size="15"></i> Exportar JSON</button>
           <button class="io-btn" id="exportCsvBtn"><i data-icon="file-text" data-size="15"></i> Exportar CSV (Extrato)</button>
@@ -299,7 +295,7 @@
     </div>
 
     <footer>
-      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. PIN, bloqueio automático e demais configurações ficam no menu do perfil (avatar no topo). Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
+      Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. PIN, bloqueio automático e demais configurações ficam em Configurações (menu ⋮ no topo). Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
     </footer>
   </div>
 
