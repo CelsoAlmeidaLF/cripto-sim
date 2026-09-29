@@ -173,3 +173,28 @@ test('apagar o cofre exige o PIN', async () => {
   assert.equal(vault.exists, false);
   assert.equal(vault.key, null);
 });
+
+test('sessão da aba reabre o cofre após recarregar sem PIN, só com a chave de sessão certa', async () => {
+  const storage = new MemoryStorage();
+  const sessionKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  const vault = new Vault(storage, 'cripito-sim');
+  vault.sessionKey = sessionKey;
+  await vault.create('123456');
+  vault.setItem('saldo', '42'); await vault.flush();
+  const blob = vault.session;
+  assert.ok(blob && blob.ciphertext);
+
+  // Recarregar: nova instância, mesma chave de sessão.
+  const reloaded = new Vault(storage, 'cripito-sim');
+  reloaded.sessionKey = sessionKey;
+  await reloaded.resume(blob);
+  assert.equal(reloaded.getItem('saldo'), '42');
+
+  const other = new Vault(storage, 'cripito-sim');
+  other.sessionKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  await assert.rejects(other.resume(blob));
+  await assert.rejects(new Vault(storage, 'cripito-sim').resume(blob));
+
+  await reloaded.lock();
+  assert.equal(reloaded.session, null);
+});

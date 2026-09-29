@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v27-tab-takeover';
+const CACHE_NAME = 'cripto-app-v29';
 const APP_SHELL = [
   './',
   './index.html',
@@ -46,15 +46,14 @@ self.addEventListener('fetch', (event) => {
   const isApiCall = url.hostname.includes('coingecko.com');
   if (isApiCall) return;
 
+  // Rede primeiro: atualizações valem na hora; o cache só entra quando estiver offline.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        if (response && response.status === 200 && event.request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-    })
+    fetch(event.request).then((response) => {
+      if (response && response.status === 200 && event.request.method === 'GET') {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(event.request, { ignoreSearch: true }))
   );
 });
