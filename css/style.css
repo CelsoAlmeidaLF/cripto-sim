@@ -12,7 +12,7 @@
   .wrap { max-width: 700px; margin: 0 auto; padding: 28px 20px 60px; }
 
   .tabs { display: flex; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-bottom: 26px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; }
-  .tabs-indicator { position: absolute; top: 4px; bottom: 4px; width: calc(33.333% - 4px); background: var(--surface-2); border-radius: 999px; left: 4px; transition: transform .25s ease; z-index: 0; }
+  .tabs-indicator { position: absolute; top: 4px; bottom: 4px; width: calc((100% - 8px) / 4); background: var(--surface-2); border-radius: 999px; left: 4px; transition: transform .25s ease; z-index: 0; }
   .tab-btn { flex: 1; position: relative; z-index: 1; padding: 11px; border: none; border-radius: 999px; background: transparent; color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; font-size: 13px; cursor: pointer; text-align: center; }
   .tab-btn.active { color: var(--accent); }
   .tab-panel { display: none; }
@@ -243,3 +243,13 @@
       --ink: #16211B; --ink-dim: #667F72; --accent: #2E8B57; --accent-dim: #4EA976; --warn: #9A7B2E;
     }
   }
+  /* Tema escolhido em Ajustes */
+  :root[data-theme="light"] {
+    --bg: #F7FAF8; --surface: #FFFFFF; --surface-2: #EFF4F0; --line: #DCE6E0;
+    --ink: #16211B; --ink-dim: #667F72; --accent: #2E8B57; --accent-dim: #4EA976; --warn: #9A7B2E;
+  }
+  .tab-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+
+  /* Ícones SVG (financ-icons.js) */
+  .icon-btn, .io-btn, .modal-close, .fab, .del, .alert-banner button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }

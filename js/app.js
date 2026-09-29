@@ -1,280 +1,15 @@
-/* ============ PWA: registro do service worker (com auto-atualização) ============ */
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
-        .then((reg) => {
-          reg.update(); // checa por versão nova assim que a página abre
-        })
-        .catch(() => { /* segue sem PWA se falhar */ });
-    });
-
-    // quando uma versão nova assume o controle, recarrega a página sozinho UMA vez
-    let swRefreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (swRefreshing) return;
-      swRefreshing = true;
-      window.location.reload();
-    });
-  }
-
-  /* ============ SEGURANÇA: PIN e tela de bloqueio ============ */
-  const PIN_HASH_KEY = 'cripto-app-pin-hash';
-  const PIN_SALT_KEY = 'cripto-app-pin-salt';
-
+(async function () {
+  await window.vaultReady;
+  const localStorage = window.secureStorage;
   function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
   function b64ToBuf(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
-
-  async function hashPin(pin, saltB64) {
-    return sha256Hex(saltB64 + ':' + pin);
-  }
-  function hasPinConfigured() { return !!localStorage.getItem(PIN_HASH_KEY); }
-  async function setPin(pin) {
-    const salt = bufToB64(crypto.getRandomValues(new Uint8Array(16)));
-    const hash = await hashPin(pin, salt);
-    localStorage.setItem(PIN_SALT_KEY, salt);
-    localStorage.setItem(PIN_HASH_KEY, hash);
-  }
-  async function checkPin(pin) {
-    const salt = localStorage.getItem(PIN_SALT_KEY);
-    const storedHash = localStorage.getItem(PIN_HASH_KEY);
-    if (!salt || !storedHash) return false;
-    const hash = await hashPin(pin, salt);
-    return hash === storedHash;
-  }
-  function removePinConfig() {
-    localStorage.removeItem(PIN_HASH_KEY);
-    localStorage.removeItem(PIN_SALT_KEY);
-    localStorage.removeItem('cripto-app-unlocked');
-    removeBiometricsConfig();
-  }
-
-  /* ---- Autenticação Biométrica (WebAuthn / Passkey) ---- */
-  const BIOMETRICS_KEY = 'cripto-app-biometrics-enabled';
-  const BIOMETRICS_CRED_KEY = 'cripto-app-biometrics-cred-id';
-
-  function isBiometricsSupported() {
-    return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
-  }
-  function isBiometricsConfigured() {
-    return localStorage.getItem(BIOMETRICS_KEY) === '1' && !!localStorage.getItem(BIOMETRICS_CRED_KEY);
-  }
-  function removeBiometricsConfig() {
-    localStorage.removeItem(BIOMETRICS_KEY);
-    localStorage.removeItem(BIOMETRICS_CRED_KEY);
-  }
-
-  async function registerBiometrics() {
-    if (!isBiometricsSupported()) {
-      alert('Seu navegador ou dispositivo não possui suporte a autenticação biométrica (WebAuthn).');
-      return false;
-    }
-    try {
-      const challenge = new Uint8Array(32);
-      crypto.getRandomValues(challenge);
-      const userId = new Uint8Array(16);
-      crypto.getRandomValues(userId);
-      const credential = await navigator.credentials.create({
-        publicKey: {
-          challenge,
-          rp: { name: 'Cripto App' },
-          user: {
-            id: userId,
-            name: 'usuario-cripto',
-            displayName: 'Usuário Cripto'
-          },
-          pubKeyCredParams: [
-            { type: 'public-key', alg: -7 },   // ES256
-            { type: 'public-key', alg: -257 }  // RS256
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: 'platform',
-            userVerification: 'required'
-          },
-          timeout: 60000
-        }
-      });
-      if (credential) {
-        localStorage.setItem(BIOMETRICS_CRED_KEY, bufToB64(credential.rawId));
-        localStorage.setItem(BIOMETRICS_KEY, '1');
-        return true;
-      }
-    } catch (e) {
-      if (e.name !== 'NotAllowedError') {
-        alert('Erro ao ativar biometria: ' + (e.message || e));
-      }
-    }
-    return false;
-  }
-
-  async function verifyBiometrics() {
-    const credIdB64 = localStorage.getItem(BIOMETRICS_CRED_KEY);
-    if (!credIdB64 || !isBiometricsSupported()) return false;
-    try {
-      const challenge = new Uint8Array(32);
-      crypto.getRandomValues(challenge);
-      const credential = await navigator.credentials.get({
-        publicKey: {
-          challenge,
-          allowCredentials: [{
-            type: 'public-key',
-            id: b64ToBuf(credIdB64)
-          }],
-          userVerification: 'required',
-          timeout: 60000
-        }
-      });
-      return !!credential;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /* ---- tela de bloqueio ---- */
-  const UNLOCK_KEY = 'cripto-app-unlocked';
-  function isUnlocked() {
-    try { return localStorage.getItem(UNLOCK_KEY) === '1'; } catch (e) { return false; }
-  }
-  function markUnlocked() {
-    try { localStorage.setItem(UNLOCK_KEY, '1'); } catch (e) {}
-  }
-  function markLocked() {
-    try { localStorage.removeItem(UNLOCK_KEY); } catch (e) {}
-  }
-
-  function showLockScreen() {
-    closeSecurityModal();
-    document.getElementById('appWrap').style.display = 'none';
-    document.getElementById('lockScreen').style.display = 'flex';
-    document.getElementById('pinInput').value = '';
-    document.getElementById('lockError').textContent = '';
-    const bioBtn = document.getElementById('biometricsUnlockBtn');
-    if (isBiometricsConfigured()) {
-      bioBtn.style.display = 'block';
-      setTimeout(async () => {
-        const ok = await verifyBiometrics();
-        if (ok) hideLockScreen();
-      }, 250);
-    } else {
-      bioBtn.style.display = 'none';
-    }
-    setTimeout(() => document.getElementById('pinInput').focus(), 50);
-  }
-  function hideLockScreen() {
-    markUnlocked();
-    document.getElementById('lockScreen').style.display = 'none';
-    document.getElementById('appWrap').style.display = 'block';
-  }
-  async function attemptPinUnlock() {
-    const pin = document.getElementById('pinInput').value;
-    const errEl = document.getElementById('lockError');
-    if (!pin) return;
-    const ok = await checkPin(pin);
-    if (ok) { hideLockScreen(); }
-    else { errEl.textContent = 'PIN incorreto'; document.getElementById('pinInput').value = ''; }
-  }
-  document.getElementById('unlockBtn').addEventListener('click', attemptPinUnlock);
-  document.getElementById('pinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptPinUnlock(); });
-  document.getElementById('biometricsUnlockBtn').addEventListener('click', async () => {
-    const ok = await verifyBiometrics();
-    if (ok) hideLockScreen();
-    else document.getElementById('lockError').textContent = 'Biometria não reconhecida. Tente o PIN.';
-  });
-
-  function checkLockOnStart() {
-    if (hasPinConfigured() && !isUnlocked()) {
-      showLockScreen();
-    }
-  }
-  function lockNow() {
-    if (!hasPinConfigured()) { alert('Configure um PIN primeiro em Segurança.'); return; }
-    markLocked();
-    showLockScreen();
-  }
-
-  /* ---- renderização da seção "Segurança" ---- */
+  function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function renderSecuritySection() {
     const el = document.getElementById('securityContent');
-    const pinSet = hasPinConfigured();
-    const bioSupported = isBiometricsSupported();
-    const bioSet = isBiometricsConfigured();
-    const cert = getDeviceCert();
-    el.innerHTML = `
-      <div class="security-row">
-        <div>
-          <div class="label">PIN de acesso</div>
-          <div class="desc">${pinSet ? 'Ativado — pedido ao abrir o app pela primeira vez ou após bloquear' : 'Desativado — qualquer pessoa que abrir este navegador vê seus dados'}</div>
-        </div>
-        <button class="icon-btn" id="pinToggleBtn">${pinSet ? 'Remover' : 'Criar PIN'}</button>
-      </div>
-      <div id="pinSetupArea"></div>
-      ${pinSet && bioSupported ? `
-      <div class="security-row">
-        <div>
-          <div class="label">Desbloqueio por Biometria</div>
-          <div class="desc">${bioSet ? 'Ativado — Touch ID, Face ID ou Windows Hello' : 'Desativado — use sua digital ou reconhecimento facial no desbloqueio'}</div>
-        </div>
-        <button class="icon-btn" id="bioToggleBtn">${bioSet ? 'Desativar' : 'Ativar'}</button>
-      </div>` : ''}
-      <div class="security-row">
-        <div>
-          <div class="label">Certificado do Celular / Aparelho (2FA Criptográfico)</div>
-          <div class="desc">${cert ? `Ativado — ID: <code>${cert.id.slice(0, 10)}…</code> (protege a abertura de qualquer JSON gerado neste aparelho)` : 'Nenhum certificado ativo neste navegador'}</div>
-        </div>
-        <button class="icon-btn" id="manageCertBtn">Gerenciar</button>
-      </div>
-      ${pinSet ? `
-      <div class="security-row">
-        <div>
-          <div class="label">Bloquear agora</div>
-          <div class="desc">Trava o app na hora — vai pedir o PIN ou Biometria na próxima vez</div>
-        </div>
-        <button class="icon-btn" id="lockNowBtn">Bloquear</button>
-      </div>` : ''}
-    `;
-    if (pinSet) document.getElementById('lockNowBtn').addEventListener('click', lockNow);
-    document.getElementById('manageCertBtn').addEventListener('click', () => {
-      closeSecurityModal();
-      openCertModal();
-    });
-    if (pinSet && bioSupported) {
-      document.getElementById('bioToggleBtn').addEventListener('click', async () => {
-        if (bioSet) {
-          removeBiometricsConfig();
-          renderSecuritySection();
-        } else {
-          const success = await registerBiometrics();
-          if (success) renderSecuritySection();
-        }
-      });
-    }
-    document.getElementById('pinToggleBtn').addEventListener('click', () => {
-      if (pinSet) {
-        const current = prompt('Digite seu PIN atual para remover a proteção:');
-        if (current == null) return;
-        checkPin(current).then(ok => {
-          if (ok) { removePinConfig(); renderSecuritySection(); }
-          else alert('PIN incorreto.');
-        });
-      } else {
-        const area = document.getElementById('pinSetupArea');
-        area.innerHTML = `
-          <div class="pin-setup-row">
-            <input type="password" inputmode="numeric" id="newPin" placeholder="Novo PIN (4-6 dígitos)" maxlength="6">
-            <input type="password" inputmode="numeric" id="confirmPin" placeholder="Confirmar" maxlength="6">
-            <button class="submit-btn" id="savePinBtn" type="button">Salvar PIN</button>
-          </div>`;
-        const doSavePin = async () => {
-          const p1 = document.getElementById('newPin').value;
-          const p2 = document.getElementById('confirmPin').value;
-          if (p1.length < 4) { alert('Use pelo menos 4 dígitos.'); return; }
-          if (p1 !== p2) { alert('Os PINs não conferem.'); return; }
-          await setPin(p1);
-          renderSecuritySection();
-        };
-        document.getElementById('savePinBtn').addEventListener('click', doSavePin);
-        document.getElementById('confirmPin').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSavePin(); });
-      }
-    });
+    el.innerHTML = '<p>Seus dados locais são criptografados. Abra com o PIN de 6 números ou com a biometria do aparelho. Guarde o código de recuperação fornecido na configuração.</p><button class="icon-btn" id="bioSettingsBtn">' + FinancIcons.svg('settings', { size: 15 }) + ' Configurações de segurança</button><button class="icon-btn" id="manageCertBtn">' + FinancIcons.svg('shield', { size: 15 }) + ' Gerenciar certificado</button><button class="icon-btn" id="lockNowBtn">' + FinancIcons.svg('lock', { size: 15 }) + ' Bloquear agora</button>';
+    document.getElementById('bioSettingsBtn').onclick = () => { closeSecurityModal(); window.vaultSettings(); };
+    document.getElementById('manageCertBtn').onclick = () => { closeSecurityModal(); openCertModal(); };
+    document.getElementById('lockNowBtn').onclick = window.lockVault;
   }
 
   /* ---- modal de Segurança ---- */
@@ -382,31 +117,23 @@
 
       <div class="card" style="margin-bottom:14px; background:var(--surface-2);">
         <div style="font-size:11px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace;">ID DO CERTIFICADO</div>
-        <div style="font-size:16px; font-family:'IBM Plex Mono',monospace; font-weight:600; margin:4px 0 8px; color:var(--accent);">${cert.id}</div>
+        <div style="font-size:16px; font-family:'IBM Plex Mono',monospace; font-weight:600; margin:4px 0 8px; color:var(--accent);">${escapeHtml(cert.id)}</div>
         <div style="font-size:11px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace;">CRIADO EM</div>
         <div style="font-size:12.5px; font-family:'IBM Plex Mono',monospace;">${new Date(cert.createdAt).toLocaleString('pt-BR')}</div>
       </div>
 
       <div style="display:flex; flex-direction:column; gap:10px;">
-        <button class="submit-btn" id="downloadCertBtn" type="button">📥 Baixar Certificado (.cert.json)</button>
-        <button class="icon-btn" id="uploadCertBtn" type="button" style="padding:11px;">📤 Importar Certificado de Outro Aparelho</button>
+        <button class="submit-btn" id="downloadCertBtn" type="button">Baixar Certificado (.cert.json)</button>
+        <button class="icon-btn" id="uploadCertBtn" type="button" style="padding:11px;">Importar Certificado de Outro Aparelho</button>
         <input type="file" id="importCertFileInput" accept="application/json" style="display:none;">
-        <button class="icon-btn" id="regenCertBtn" type="button" style="color:var(--down); padding:11px;">⚠️ Gerar Novo Certificado</button>
+        <button class="icon-btn" id="regenCertBtn" type="button" style="color:var(--down); padding:11px;">Gerar Novo Certificado</button>
       </div>
       <div class="status" id="certStatus" style="margin-top:12px;"></div>
     `;
 
-    document.getElementById('downloadCertBtn').addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(cert, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `cripto-device-${cert.id}.cert.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      document.getElementById('certStatus').textContent = 'Certificado baixado! Guarde em local seguro ou envie para seus aparelhos autorizados.';
+    document.getElementById('downloadCertBtn').addEventListener('click', async () => {
+      try { await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
+      catch (_) { document.getElementById('certStatus').textContent = 'Não foi possível exportar o certificado protegido.'; }
     });
 
     document.getElementById('uploadCertBtn').addEventListener('click', () => {
@@ -417,9 +144,9 @@
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
-          const importedCert = JSON.parse(reader.result);
+          const importedCert = await window.importCertificate(JSON.parse(reader.result), 'cripito-sim:certificate');
           if (importedCert && importedCert.id && importedCert.secret) {
             localStorage.setItem(DEVICE_CERT_KEY, JSON.stringify(importedCert));
             renderCertModal();
@@ -463,11 +190,11 @@
     return password + '::DEVICE_CERT::' + (certSecret || '');
   }
 
-  async function deriveAesKey(combinedSecret, saltBytes) {
+  async function deriveAesKey(combinedSecret, saltBytes, iterations = 600000) {
     if (!subtleCryptoSupported) throw new Error('Criptografia não suportada neste navegador (precisa de HTTPS ou localhost).');
     const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(combinedSecret), { name: 'PBKDF2' }, false, ['deriveKey']);
     return crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt: saltBytes, iterations: 150000, hash: 'SHA-256' },
+      { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
       keyMaterial,
       { name: 'AES-GCM', length: 256 },
       false,
@@ -488,6 +215,7 @@
       encrypted: true,
       certProtected: true,
       certId: cert.id,
+      iterations: 600000,
       salt: bufToB64(salt),
       iv: bufToB64(iv),
       ciphertext: bufToB64(ciphertext),
@@ -498,6 +226,8 @@
     const salt = b64ToBuf(payload.salt);
     const iv = b64ToBuf(payload.iv);
     const ciphertext = b64ToBuf(payload.ciphertext);
+    const iterations = payload.iterations == null ? 150000 : Number(payload.iterations);
+    if (iterations !== 150000 && iterations !== 600000) throw new Error('Parâmetro criptográfico inválido.');
 
     let effectiveCertSecret = certSecret;
     if (effectiveCertSecret === undefined && payload.certProtected) {
@@ -511,13 +241,13 @@
         throw new Error('CERT_REQUIRED');
       }
       const combined = getCombinedSecret(password, effectiveCertSecret);
-      const key = await deriveAesKey(combined, salt);
+      const key = await deriveAesKey(combined, salt, iterations);
       const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
       return JSON.parse(new TextDecoder().decode(plainBuf));
     }
 
     // Compatibilidade com arquivos antigos protegidos apenas com senha
-    const key = await deriveAesKey(password, salt);
+    const key = await deriveAesKey(password, salt, iterations);
     const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     return JSON.parse(new TextDecoder().decode(plainBuf));
   }
@@ -542,7 +272,7 @@
     brl:  { symbol: 'R$', bg: 'rgba(143,160,152,0.18)', color: 'var(--ink)' },
     btc:  { symbol: '₿', bg: 'rgba(247,147,26,0.18)', color: '#F7931A' },
     eth:  { symbol: 'Ξ', bg: 'rgba(139,140,247,0.18)', color: '#8B8CF7' },
-    sol:  { symbol: '◎', bg: 'rgba(111,207,151,0.18)', color: '#6FCF97' },
+    sol:  { symbol: 'S', bg: 'rgba(111,207,151,0.18)', color: '#6FCF97' },
     bnb:  { symbol: 'B',  bg: 'rgba(240,185,11,0.18)', color: '#F0B90B' },
     xrp:  { symbol: 'X',  bg: 'rgba(35,35,35,0.25)', color: '#AEB4BC' },
     ada:  { symbol: 'A',  bg: 'rgba(0,51,173,0.20)', color: '#5B7FE0' },
@@ -589,6 +319,17 @@
     return v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + ' ' + asset.toUpperCase();
   }
 
+  /* ============ AJUSTES ============ */
+  const clickById = id => () => document.getElementById(id).click();
+  FinancSettings.addSection({ title: 'Dados e backup', rows: [
+    { icon: 'download', label: 'Exportar backup (JSON)', description: 'Arquivo criptografado com PIN próprio.', onClick: clickById('exportBtn') },
+    { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
+    { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
+    { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
+    { icon: 'shield', label: 'Certificado digital do aparelho', description: 'Segunda chave para abrir os backups.', onClick: () => openCertModal() },
+    { icon: 'file-text', label: 'Relatório fiscal e IRPF', description: 'Alienações mensais e ganho de capital.', onClick: clickById('openTaxModalBtn') },
+  ] });
+
   /* ============ TABS ============ */
   const tabButtonsList = Array.from(document.querySelectorAll('.tab-btn'));
   tabButtonsList.forEach((btn, i) => {
@@ -599,6 +340,7 @@
       const panel = document.getElementById('panel-' + btn.dataset.tab);
       if (panel) panel.classList.add('active');
       if (btn.dataset.tab === 'metas') renderTargetProfit();
+      if (btn.dataset.tab === 'ajustes') FinancSettings.mount(document.getElementById('settingsMount'));
       document.getElementById('tabsIndicator').style.transform = `translateX(${i * 100}%)`;
     });
   });
@@ -838,7 +580,7 @@
   }
   function renderPortfolioSelect() {
     const sel = document.getElementById('portfolioSelect');
-    sel.innerHTML = portfolios.map(p => `<option value="${p.id}" ${p.id === currentPortfolioId ? 'selected' : ''}>${p.name}</option>`).join('');
+    sel.innerHTML = portfolios.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === currentPortfolioId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
   }
   document.getElementById('portfolioSelect').addEventListener('change', async (e) => {
     currentPortfolioId = e.target.value;
@@ -1221,7 +963,7 @@
     list.innerHTML = alerts.length ? alerts.map(a => `
       <div class="alert-row">
         <div class="details">${ASSETS[a.asset].name} ${a.direction === 'above' ? 'acima de' : 'abaixo de'} ${fmt(a.target, 'usd')}</div>
-        <button class="del" data-id="${a.id}">✕</button>
+        <button class="del" data-id="${a.id}" aria-label="Remover alerta">${FinancIcons.svg('x', { size: 16 })}</button>
       </div>`).join('') : '<div class="empty-note">Nenhum alerta criado.</div>';
     list.querySelectorAll('.del').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1256,7 +998,7 @@
       const met = a.direction === 'above' ? price >= a.target : price <= a.target;
       if (met && !a.triggered) {
         a.triggered = true;
-        firedHtml += `<div class="alert-banner"><span>${ASSETS[a.asset].name} ${a.direction === 'above' ? 'passou de' : 'caiu abaixo de'} ${fmt(a.target,'usd')} — preço atual: ${fmt(price,'usd')}</span><button data-dismiss="${a.id}">✕</button></div>`;
+        firedHtml += `<div class="alert-banner"><span>${ASSETS[a.asset].name} ${a.direction === 'above' ? 'passou de' : 'caiu abaixo de'} ${fmt(a.target,'usd')} — preço atual: ${fmt(price,'usd')}</span><button data-dismiss="${a.id}" aria-label="Dispensar">${FinancIcons.svg('x', { size: 16 })}</button></div>`;
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             new Notification(`Alerta: ${ASSETS[a.asset].name}`, {
@@ -1418,10 +1160,29 @@
 
   document.getElementById('tradeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn.disabled) return;
     const asset = document.getElementById('assetSelect').value;
     const value = parseFloat(document.getElementById('valueInput').value);
     const price = usdPrice[asset];
-    if (!value || value <= 0 || !price) return;
+    if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(price) || price <= 0) return;
+
+    let qty = value / price;
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    if (currentType === 'sell') {
+      const availableQty = computeSummary()[asset]?.boughtQty || 0;
+      if (!Number.isFinite(availableQty) || availableQty <= 0) {
+        document.getElementById('ioStatus').textContent = 'operação bloqueada: não há saldo deste ativo em custódia para venda';
+        return;
+      }
+      // Tolera apenas o arredondamento numérico ao vender toda a posição.
+      const tolerance = Number.EPSILON * Math.max(qty, availableQty) * 4;
+      if (qty - availableQty > tolerance) {
+        document.getElementById('ioStatus').textContent = 'operação bloqueada: quantidade de venda maior que o saldo do ativo em custódia';
+        return;
+      }
+      qty = Math.min(qty, availableQty);
+    }
 
     if (currentType === 'buy' && value > computeCashBalance()) {
       if (settings.blockOverdraft) {
@@ -1432,8 +1193,6 @@
     } else {
       document.getElementById('ioStatus').textContent = '';
     }
-    const qty = value / price;
-    const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Minerando bloco…';
     await appendBlock(chain, {
@@ -1460,8 +1219,8 @@
     statusEl.textContent = 'verificando…';
     const result = await verifyChainIntegrity(chain);
     statusEl.innerHTML = result.valid
-      ? `<span style="color:var(--up);">✓ íntegro</span> — ${chain.length} blocos verificados, encadeamento de hashes confere do início ao fim`
-      : `<span style="color:var(--down);">✗ adulteração detectada</span> no bloco #${result.at} (${result.reason})`;
+      ? `<span style="color:var(--up);">Íntegro</span> — ${chain.length} blocos verificados, encadeamento de hashes confere do início ao fim`
+      : `<span style="color:var(--down);">Adulteração detectada</span> no bloco #${result.at} (${result.reason})`;
   });
 
   /* ---- Calculadora de Meta de Lucro (Target Profit) ---- */
@@ -1543,9 +1302,9 @@
       alert('Criptografia indisponível neste navegador ou contexto não seguro (precisa de HTTPS ou localhost). Operação cancelada para proteger seus dados.');
       return;
     }
-    const password = prompt('Defina uma senha obrigatória para criptografar o arquivo JSON (AES-256-GCM):');
+    const password = await window.askSecret('Crie um PIN de 6 números para o backup:', true);
     if (!password) {
-      document.getElementById('ioStatus').textContent = 'exportação cancelada: a senha é obrigatória para criptografar todos os dados';
+      document.getElementById('ioStatus').textContent = 'exportação cancelada: o PIN é obrigatório para criptografar todos os dados';
       return;
     }
     const data = { chain, deposits, netWorthHistory, alerts, settings };
@@ -1577,7 +1336,7 @@
       try {
         let imported = JSON.parse(reader.result);
         if (imported && imported.encrypted) {
-          const password = prompt('Este arquivo está criptografado. Digite a senha:');
+          const password = await window.askSecret('PIN do backup (arquivos antigos podem usar senha):', false, true);
           if (password === null) return;
           try {
             imported = await decryptJSON(imported, password);
@@ -1586,7 +1345,7 @@
               alert(`Este arquivo foi criptografado com Certificado Digital deste ou de outro aparelho (ID: ${imported.certId || 'desconhecido'}). Importe o certificado em "Segurança > Certificado Digital" antes de abrir.`);
               document.getElementById('ioStatus').textContent = 'abertura bloqueada: certificado digital do aparelho ausente';
             } else {
-              document.getElementById('ioStatus').textContent = 'senha incorreta ou certificado do aparelho não corresponde ao arquivo';
+              document.getElementById('ioStatus').textContent = 'PIN incorreto ou certificado do aparelho não corresponde ao arquivo';
             }
             return;
           }
@@ -1623,7 +1382,7 @@
   });
 
   /* ---- exportação para CSV (extrato contábil / planilhas) ---- */
-  function exportCsv() {
+  async function exportCsv() {
     const allEvents = [];
     deposits.forEach(d => {
       allEvents.push({
@@ -1681,16 +1440,9 @@
       ].join(';'));
     });
 
-    const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `extrato-cripto-${currentPortfolioId}-${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    document.getElementById('ioStatus').textContent = 'extrato CSV exportado com sucesso!';
+    try {
+      await window.exportProtected(csvLines.join('\r\n'), 'cripito-sim:statement', `extrato-cripto-${currentPortfolioId}.csv.secure.json`);
+    } catch (_) { document.getElementById('ioStatus').textContent = 'Não foi possível exportar o extrato protegido.'; }
   }
   document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
 
@@ -1789,7 +1541,7 @@
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <span style="font-size:13px; font-weight:600;">Status Tributário:</span>
         <span class="tax-badge ${isExempt ? 'exempt' : 'taxable'}">
-          ${isExempt ? '✓ ISENTO (Vendas ≤ R$ 35.000)' : '⚠️ TRIBUTÁVEL (Vendas > R$ 35.000)'}
+          ${isExempt ? 'ISENTO (Vendas ≤ R$ 35.000)' : 'TRIBUTÁVEL (Vendas > R$ 35.000)'}
         </span>
       </div>
 
@@ -1903,14 +1655,14 @@
     connectedFilePassword = null;
     const btn = document.getElementById('connectFileBtn');
     btn.style.display = '';
-    btn.textContent = 'Conectar arquivo JSON';
+    btn.innerHTML = FinancIcons.svg('link', { size: 15 }) + ' Conectar arquivo JSON';
     document.getElementById('fileStatus').textContent = '';
   }
   async function writeToFile() {
     if (!fileHandle) return;
     try {
       if (!connectedFilePassword) {
-        document.getElementById('fileStatus').textContent = 'arquivo não salvo: defina uma senha de criptografia';
+        document.getElementById('fileStatus').textContent = 'arquivo não salvo: defina um PIN de criptografia';
         return;
       }
       const data = { chain, deposits, netWorthHistory, alerts, settings };
@@ -1918,7 +1670,7 @@
       const writable = await fileHandle.createWritable();
       await writable.write(JSON.stringify(payload, null, 2));
       await writable.close();
-      document.getElementById('fileStatus').textContent = `salvo em ${fileHandle.name} · ${new Date().toLocaleTimeString('pt-BR')} 🔒 (100% criptografado)`;
+      document.getElementById('fileStatus').textContent = `salvo em ${fileHandle.name} · ${new Date().toLocaleTimeString('pt-BR')} (100% criptografado)`;
     } catch (e) {
       document.getElementById('fileStatus').textContent = 'não foi possível escrever no arquivo conectado: ' + (e.message || e);
     }
@@ -1932,7 +1684,7 @@
       if (parsed && parsed.encrypted) {
         let pwd = connectedFilePassword;
         if (!pwd) {
-          pwd = prompt('Este arquivo está protegido por senha. Digite a senha:');
+          pwd = await window.askSecret('PIN do arquivo (arquivos antigos podem usar senha):', false, true);
           if (pwd === null) return;
         }
         try {
@@ -1943,7 +1695,7 @@
             alert(`Este arquivo foi criptografado com Certificado Digital deste ou de outro aparelho (ID: ${parsed.certId || 'desconhecido'}). Importe o certificado em "Segurança > Certificado Digital" antes de abrir.`);
             document.getElementById('fileStatus').textContent = 'bloqueado: certificado digital do aparelho ausente';
           } else {
-            document.getElementById('fileStatus').textContent = 'senha incorreta ou certificado do aparelho não confere';
+            document.getElementById('fileStatus').textContent = 'PIN incorreto ou certificado do aparelho não confere';
           }
           return;
         }
@@ -1987,7 +1739,7 @@
         markConnected(fileHandle.name);
       } else {
         fileHandle = handle;
-        document.getElementById('connectFileBtn').textContent = `Reautorizar ${handle.name}`;
+        { const btn = document.getElementById('connectFileBtn'); btn.innerHTML = FinancIcons.svg('link', { size: 15 }); btn.append(` Reautorizar ${handle.name}`); }
         document.getElementById('fileStatus').textContent = 'clique uma vez para retomar a conexão automática com o arquivo';
       }
     } catch (e) {}
@@ -2017,11 +1769,11 @@
           alert('Criptografia indisponível no navegador.');
           return;
         }
-        let pwd = prompt('Digite uma senha obrigatória para criptografar o arquivo no disco (AES-256):');
+        let pwd = await window.askSecret('Crie um PIN de 6 números para o arquivo:', true);
         while (!pwd) {
-          pwd = prompt('Atenção: A senha é obrigatória para proteger todos os seus dados. Digite a senha:');
+          pwd = await window.askSecret('Crie um PIN de 6 números para o arquivo:', true);
           if (pwd === null) {
-            document.getElementById('fileStatus').textContent = 'conexão cancelada — senha é obrigatória';
+            document.getElementById('fileStatus').textContent = 'conexão cancelada — o PIN é obrigatório';
             return;
           }
         }
@@ -2125,11 +1877,11 @@
       saveCachedPrices();
       const statusTextEl = document.getElementById('statusText');
       if (sourceName.includes('offline')) {
-        statusTextEl.innerHTML = `<span class="live" style="color:var(--warn);">● preços em cache (${sourceName})</span>`;
+        statusTextEl.innerHTML = `<span class="live" style="color:var(--warn);"><span class="live-dot"></span>preços em cache (${sourceName})</span>`;
       } else if (sourceName.includes('fallback')) {
-        statusTextEl.innerHTML = `<span class="live" style="color:var(--accent);">● preços ao vivo (${sourceName})</span>`;
+        statusTextEl.innerHTML = `<span class="live" style="color:var(--accent);"><span class="live-dot"></span>preços ao vivo (${sourceName})</span>`;
       } else {
-        statusTextEl.innerHTML = '<span class="live">● preços ao vivo</span>';
+        statusTextEl.innerHTML = '<span class="live"><span class="live-dot"></span>preços ao vivo</span>';
       }
       document.getElementById('statusTime').textContent = 'atualizado às ' + new Date().toLocaleTimeString('pt-BR');
       renderConverter();
@@ -2149,7 +1901,6 @@
   /* ============ INICIALIZAÇÃO ============ */
   (async function init() {
     try {
-      checkLockOnStart();
       loadPortfolioList();
       renderPortfolioSelect();
       await loadCurrentPortfolioData();
@@ -2161,9 +1912,10 @@
     } catch (e) {
       // nunca deixa a tela em branco: mostra o app mesmo se algo falhar, com um aviso
       document.getElementById('appWrap').style.display = 'block';
-      document.getElementById('lockScreen').style.display = 'none';
       const banner = document.getElementById('alertBanners');
-      if (banner) banner.innerHTML = `<div class="alert-banner"><span>Ocorreu um erro ao carregar alguns dados (${e.message || e}). Tente recarregar a página.</span></div>`;
+      if (banner) banner.innerHTML = `<div class="alert-banner"><span>Ocorreu um erro ao carregar alguns dados (${escapeHtml(e.message || e)}). Tente recarregar a página.</span></div>`;
       console.error('Erro na inicialização:', e);
     }
   })();
+
+})().catch(() => window.lockVault());
