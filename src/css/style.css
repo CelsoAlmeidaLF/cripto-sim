@@ -237,16 +237,12 @@
   .tax-card .v { font-size: 16px; font-family: 'IBM Plex Mono', monospace; margin-top: 4px; font-weight: 600; }
   .tax-notice { font-size: 12px; line-height: 1.5; color: var(--ink-dim); margin-top: 14px; padding: 10px; border-radius: 6px; background: var(--surface-2); border-left: 3px solid var(--warn); }
 
+  /* Tema claro: segue o sistema do aparelho. */
   @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
+    :root {
       --bg: #F7FAF8; --surface: #FFFFFF; --surface-2: #EFF4F0; --line: #DCE6E0;
       --ink: #16211B; --ink-dim: #667F72; --accent: #2E8B57; --accent-dim: #4EA976; --warn: #9A7B2E;
     }
-  }
-  /* Tema escolhido em Ajustes */
-  :root[data-theme="light"] {
-    --bg: #F7FAF8; --surface: #FFFFFF; --surface-2: #EFF4F0; --line: #DCE6E0;
-    --ink: #16211B; --ink-dim: #667F72; --accent: #2E8B57; --accent-dim: #4EA976; --warn: #9A7B2E;
   }
   .tab-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 
