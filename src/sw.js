@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v26-bio-passkey';
+const CACHE_NAME = 'cripto-app-v27-tab-takeover';
 const APP_SHELL = [
   './',
   './index.html',
