@@ -1,6 +1,6 @@
 # Cripto — Conversor & Portfólio PWA
 
-> Aplicação web progressiva (PWA) client-side para conversão de moedas, gestão de carteira cripto com auditoria em blockchain local SHA-256, simulador DCA, apuração fiscal (IN 1888) e segurança criptográfica avançada com 2FA via certificado de dispositivo.
+> Aplicação web progressiva (PWA) client-side para conversão de moedas, gestão de carteira cripto com auditoria em blockchain local SHA-256, simulador DCA, apuração fiscal (IRPF + DeCripto) e segurança criptográfica avançada com 2FA via certificado de dispositivo.
 
 ---
 
@@ -11,7 +11,7 @@
 - [Arquitetura & Segurança](#arquitetura--segurança)
   - [Blockchain Local SHA-256](#blockchain-local-sha-256)
   - [2FA Criptográfico & Certificado do Dispositivo](#2fa-criptográfico--certificado-do-dispositivo)
-  - [Apuração Fiscal IRPF (IN 1888)](#apuração-fiscal-irpf-in-1888)
+  - [Apuração Fiscal IRPF (DeCripto)](#apuração-fiscal-irpf-decripto)
 - [Estrutura do Projeto](#estrutura-do-projeto)
 - [Como Executar](#como-executar)
   - [Navegador / Servidor Local](#navegador--servidor-local)
@@ -50,7 +50,7 @@ A aplicação combina um conversor com cotações em tempo real a um gerenciador
   - Cálculo dinâmico do capital necessário a partir do lucro desejado pelo usuário (mensal ou anual).
   - Tabela comparativa com colunas focadas: Cenário de Mercado, Rendimento Estimado, Capital em Dólares e Margem de Segurança.
 
-- **Relatório Fiscal IRPF (Brasil - IN 1888)**:
+- **Relatório Fiscal IRPF (Brasil - DeCripto)**:
   - Apuração mensal automática de alienações em Reais (BRL).
   - Alerta do limite de isenção de **R$ 35.000,00/mês**.
   - Cálculo de ganho de capital e estimativa de imposto (alíquota base de 15%) sobre operações tributáveis.
@@ -78,7 +78,9 @@ Para garantir que o histórico de operações financeiras não sofra adulteraç�
 - **Migração segura**: registros antigos só são removidos depois que a gravação criptografada é confirmada.
 - **Certificados e backups**: certificados, backups JSON e extratos exportados exigem PIN e usam AES-256-GCM; formatos antigos continuam importáveis para migração.
 
-### Apuração Fiscal IRPF (IN 1888)
+### Apuração Fiscal IRPF (DeCripto)
+
+> A IN RFB 2.291/2025 (DeCripto) substituiu a IN 1888/2019; a declaração mensal vale desde julho de 2026. A tributação não mudou: isenção para vendas até R$ 35 mil/mês e ganho de capital acima disso.
 O cálculo fiscal é executado em `src/finance-engine.js`:
 - Separa compras e vendas por competência mensal (`AAAA-MM`).
 - Converte a alienação para BRL com base na cotação cambial do período.
@@ -159,7 +161,7 @@ node --test test/*.test.js
 2. `test/financial.test.js`:
    - Saldo de caixa com depósitos, compras e vendas.
    - Preço médio ponderado e lucros realizados/não realizados.
-   - Regras da IN 1888 (isenção até R$ 35k e imposto acima desse teto).
+   - Regras de IRPF cripto (isenção até R$ 35k e imposto acima desse teto).
    - Simulação periódica DCA.
 3. `test/cert-2fa.test.js`:
    - Validação do fluxo 2FA criptográfico com PBKDF2 + AES-GCM.

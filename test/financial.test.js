@@ -51,7 +51,7 @@ test('Resumo da Carteira - Happy path: Custo médio ponderado e lucro realizado'
   assert.equal(btcSummary.unrealized, 15000);
 });
 
-test('IRPF Cripto (IN 1888) - Happy path: Isenção abaixo de R$ 35.000', () => {
+test('IRPF Cripto - Happy path: Isenção abaixo de R$ 35.000', () => {
   const assetKeys = ['btc'];
   const brlRate = 5.0; // 1 USD = R$ 5,00
   const trades = [
@@ -67,7 +67,7 @@ test('IRPF Cripto (IN 1888) - Happy path: Isenção abaixo de R$ 35.000', () => 
   assert.equal(tax.monthSales.length, 1);
 });
 
-test('IRPF Cripto (IN 1888) - Negative path: Ultrapassando R$ 35.000 gera imposto sobre ganho de capital', () => {
+test('IRPF Cripto - Negative path: Ultrapassando R$ 35.000 gera imposto sobre ganho de capital', () => {
   const assetKeys = ['btc'];
   const brlRate = 5.0;
   const trades = [
