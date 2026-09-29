@@ -153,7 +153,7 @@ test('código de recuperação usado deixa de valer após redefinir o PIN', asyn
   const first = '00112233-44556677-8899aabb-ccddeeff-00112233-44556677-8899aabb-ccddeeff';
   await vault.create('123456', {}, first);
   await vault.lock();
-  const second = await vault.resetPassword(first, '222222');
+  const { recovery: second } = await vault.resetPassword(first, '222222');
   assert.match(second, /^[0-9a-f]{8}(-[0-9a-f]{8}){7}$/);
   assert.notEqual(second, first);
   await vault.lock();

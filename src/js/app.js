@@ -79,18 +79,27 @@
     if (e.target.id === 'fileAccessModalOverlay') closeFileAccessModal();
   });
 
-  /* ============ CERTIFICADO DIGITAL DO CELULAR / DISPOSITIVO (2FA CRIPTOGRÁFICO) ============ */
+  /* ============ CERTIFICADO DIGITAL (2FA CRIPTOGRÁFICO) ============ */
+  // Com o PIN FINANC, o certificado é o FINANC (um só para todos os apps; o kit já trouxe o antigo deste app).
+  // Sem ele (app ainda com PIN próprio), segue o certificado próprio guardado no cofre do app.
   const DEVICE_CERT_KEY = 'cripto-app-device-cert';
+  const FinancCert = window.FinancCert;
 
-  function getDeviceCert() {
+  function ownCert() {
     try {
       const raw = localStorage.getItem(DEVICE_CERT_KEY);
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
+  // Backup antigo pode ter sido cifrado com um certificado anterior: procura pelo id.
+  function certFor(id) {
+    if (FinancCert.linked) return (id && FinancCert.find(id)) || FinancCert.current;
+    return ownCert();
+  }
 
-  function ensureDeviceCert() {
-    let cert = getDeviceCert();
+  async function ensureDeviceCert() {
+    if (FinancCert.linked) return FinancCert.ensure();
+    let cert = ownCert();
     if (!cert) {
       const randomBytes = crypto.getRandomValues(new Uint8Array(32));
       const idBytes = crypto.getRandomValues(new Uint8Array(8));
@@ -105,12 +114,12 @@
     return cert;
   }
 
-  function renderCertModal() {
-    const cert = ensureDeviceCert();
+  async function renderCertModal() {
+    const cert = await ensureDeviceCert();
     const el = document.getElementById('certModalContent');
     el.innerHTML = `
       <div style="font-size:13.5px; line-height:1.6; color:var(--ink); margin-bottom:14px;">
-        Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.
+        ${FinancCert.linked ? 'Este aparelho usa o <strong>Certificado FINANC</strong>, o mesmo em todos os apps FINANC.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.'}
         Se alguém descobrir seu PIN ou senha, <strong>ainda assim NÃO conseguirá abrir seu arquivo JSON</strong>
         em outro computador ou celular sem importar este arquivo de certificado antes.
       </div>
@@ -132,7 +141,7 @@
     `;
 
     document.getElementById('downloadCertBtn').addEventListener('click', async () => {
-      try { await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
+      try { if (FinancCert.linked) await FinancCert.export(); else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
       catch (_) { document.getElementById('certStatus').textContent = 'Não foi possível exportar o certificado protegido.'; }
     });
 
@@ -146,10 +155,11 @@
       const reader = new FileReader();
       reader.onload = async () => {
         try {
-          const importedCert = await window.importCertificate(JSON.parse(reader.result), 'cripito-sim:certificate');
+          const payload = JSON.parse(reader.result);
+          const importedCert = FinancCert.linked ? await FinancCert.importFile(payload) : await window.importCertificate(payload, 'cripito-sim:certificate');
           if (importedCert && importedCert.id && importedCert.secret) {
-            localStorage.setItem(DEVICE_CERT_KEY, JSON.stringify(importedCert));
-            renderCertModal();
+            if (!FinancCert.linked) localStorage.setItem(DEVICE_CERT_KEY, JSON.stringify(importedCert));
+            await renderCertModal();
             document.getElementById('certStatus').textContent = `Certificado "${importedCert.id}" ativado com sucesso neste aparelho!`;
           } else {
             document.getElementById('certStatus').textContent = 'Arquivo de certificado inválido.';
@@ -162,17 +172,17 @@
       e.target.value = '';
     });
 
-    document.getElementById('regenCertBtn').addEventListener('click', () => {
-      if (!confirm('Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
-      localStorage.removeItem(DEVICE_CERT_KEY);
-      ensureDeviceCert();
-      renderCertModal();
+    document.getElementById('regenCertBtn').addEventListener('click', async () => {
+      if (!confirm(FinancCert.linked ? 'Gerar um novo certificado FINANC? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
+      if (FinancCert.linked) await FinancCert.regenerate();
+      else { localStorage.removeItem(DEVICE_CERT_KEY); await ensureDeviceCert(); }
+      await renderCertModal();
       document.getElementById('certStatus').textContent = 'Novo certificado digital gerado com sucesso.';
     });
   }
 
-  function openCertModal() {
-    renderCertModal();
+  async function openCertModal() {
+    await renderCertModal();
     document.getElementById('certModalOverlay').style.display = 'flex';
   }
   function closeCertModal() {
@@ -205,7 +215,7 @@
   async function encryptJSON(obj, password, certSecret) {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cert = ensureDeviceCert();
+    const cert = await ensureDeviceCert();
     const effectiveCertSecret = certSecret !== undefined ? certSecret : cert.secret;
     const combined = getCombinedSecret(password, effectiveCertSecret);
     const key = await deriveAesKey(combined, salt);
@@ -231,7 +241,7 @@
 
     let effectiveCertSecret = certSecret;
     if (effectiveCertSecret === undefined && payload.certProtected) {
-      const cert = getDeviceCert();
+      const cert = certFor(payload.certId);
       effectiveCertSecret = cert ? cert.secret : null;
     }
 
@@ -326,7 +336,7 @@
     { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
     { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
     { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
-    { icon: 'shield', label: 'Certificado digital do aparelho', description: 'Segunda chave para abrir os backups.', onClick: () => openCertModal() },
+    { icon: 'shield', label: 'Certificado FINANC', description: 'Segunda chave dos backups, a mesma em todos os apps.', onClick: () => openCertModal() },
     { icon: 'file-text', label: 'Relatório fiscal e IRPF', description: 'Alienações mensais e ganho de capital.', onClick: clickById('openTaxModalBtn') },
   ] });
 
