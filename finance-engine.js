@@ -116,41 +116,93 @@
     return { valid: true };
   }
 
+  /* ---- Constantes fiscais e de câmbio (legislação vigente em set/2026) ---- */
+  // Cotação usada SOMENTE quando não há nenhuma cotação disponível (nem da operação, nem atual).
+  // Único fallback do app: sempre sinalizado como "estimado" na UI e no relatório.
+  const FALLBACK_BRL_PER_USD = 5.5;
+  const EXEMPTION_LIMIT_BRL = 35000; // isenção mensal (regime nacional)
+  const DARF_MIN_BRL = 10; // Lei 9.430/96 art. 68: abaixo disso acumula para o mês seguinte
+  const FOREIGN_RATE = 0.15; // Lei 14.754/2023: alíquota fixa, apuração anual
+  const DEFAULT_SPREAD_PCT = 1; // spread/slippage estimado sobre a cotação média
+  const TAX_TIMEZONE = 'America/Sao_Paulo';
+  // Lei 8.981/95 art. 21 (red. Lei 13.259/2016): faixas progressivas de ganho de capital
+  const CAPITAL_GAINS_BRACKETS = [
+    { upTo: 5000000, rate: 0.15 },
+    { upTo: 10000000, rate: 0.175 },
+    { upTo: 30000000, rate: 0.20 },
+    { upTo: Infinity, rate: 0.225 }
+  ];
+  const TAX_DISCLAIMERS = [
+    'Simulação educativa: não substitui contador, o GCAP nem a declaração de ajuste anual.',
+    'O regime depende do local de custódia: exchange nacional (ganho de capital mensal, isenção de R$ 35 mil, DARF 4600) ou exterior (Lei 14.754/2023: 15% fixo, apuração anual na declaração, sem isenção de R$ 35 mil e sem DARF mensal).',
+    'O câmbio USD/BRL usado é indicativo (mercado/cripto), não a PTAX do Banco Central, que é a cotação oficial da apuração.',
+    'Os rendimentos da Meta de Lucro são hipóteses sem fonte, não promessa nem previsão de retorno; renda passiva (lending/staking) também é tributável.',
+    'Legislação vigente em set/2026. A MP 1.303/2025 (alíquota única) caducou, mas o tema pode voltar; confira as regras antes de decidir.'
+  ];
+
+  const round2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+
+  /** Chave AAAA-MM no fuso America/Sao_Paulo (não depende do fuso do aparelho). */
+  function monthKeySP(timestamp) {
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat('en-CA', { timeZone: TAX_TIMEZONE, year: 'numeric', month: '2-digit' }).formatToParts(new Date(timestamp));
+    } catch (e) {
+      const d = new Date(Number(timestamp) - 3 * 3600 * 1000); // BRT fixo (sem horário de verão desde 2019)
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    }
+    const y = parts.find(p => p.type === 'year').value;
+    const m = parts.find(p => p.type === 'month').value;
+    return `${y}-${m}`;
+  }
+
+  /* ---- Economia de uma operação (valor, taxas, spread) ---- */
+  function tradeGrossUSD(t) {
+    if (t.value != null && Number.isFinite(Number(t.value))) return Number(t.value);
+    return (Number(t.qty) || 0) * (Number(t.price) || 0);
+  }
+  function tradeCostsUSD(t) {
+    const fee = Number(t.feeUSD != null ? t.feeUSD : t.fee) || 0; // `fee` legado = USD absoluto
+    const spread = Number(t.spreadUSD) || 0;
+    return { fee: Math.max(0, fee), spread: Math.max(0, spread) };
+  }
+  /** Compra: total pago (valor + taxa + spread). Venda: líquido recebido (valor − taxa − spread). */
+  function tradeNetUSD(t) {
+    const gross = tradeGrossUSD(t);
+    const c = tradeCostsUSD(t);
+    return t.type === 'buy' ? gross + c.fee + c.spread : gross - c.fee - c.spread;
+  }
+
   /* ---- Cálculos de Saldo e Carteira ---- */
   function computeCashBalance(deposits = [], trades = []) {
     const totalDeposited = deposits.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (Number(t.value) || 0), 0);
-    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (Number(t.value) || 0), 0);
+    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + tradeNetUSD(t), 0);
+    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + tradeNetUSD(t), 0);
     return totalDeposited - totalBuy + totalSell;
+  }
+
+  function totalTradeCostsUSD(trades = []) {
+    return trades.reduce((s, t) => { const c = tradeCostsUSD(t); return s + c.fee + c.spread; }, 0);
   }
 
   function computeSummary(assetKeys, trades = [], currentUsdPrices = {}) {
     const perAsset = {};
     assetKeys.forEach(a => {
-      perAsset[a] = {
-        boughtQty: 0,
-        boughtCost: 0,
-        soldQty: 0,
-        soldProceeds: 0,
-        realized: 0
-      };
+      perAsset[a] = { boughtQty: 0, boughtCost: 0, soldQty: 0, soldProceeds: 0, realized: 0 };
     });
 
     const sortedTrades = [...trades].sort((a, b) => a.timestamp - b.timestamp);
     sortedTrades.forEach(t => {
-      const a = t.asset;
-      const s = perAsset[a];
+      const s = perAsset[t.asset];
       if (!s) return;
-
       const qty = Number(t.qty) || 0;
-      const price = Number(t.price) || 0;
 
       if (t.type === 'buy') {
         s.boughtQty += qty;
-        s.boughtCost += (qty * price);
+        s.boughtCost += tradeNetUSD(t); // taxa e spread de compra entram no custo
       } else if (t.type === 'sell') {
         const avgCostAtSale = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        const netSaleProceeds = (qty * price);
+        const netSaleProceeds = tradeNetUSD(t); // taxa e spread de venda reduzem a alienação
         const costBasisSold = avgCostAtSale * qty;
         s.realized += netSaleProceeds - costBasisSold;
         s.soldQty += qty;
@@ -168,8 +220,7 @@
       const s = perAsset[a];
       const price = Number(currentUsdPrices[a]) || 0;
       const currentValue = s.boughtQty * price;
-      const costBasis = s.boughtCost;
-      const unrealized = currentValue - costBasis;
+      const unrealized = currentValue - s.boughtCost;
       s.currentValue = currentValue;
       s.avgCost = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
       s.unrealized = unrealized;
@@ -187,106 +238,246 @@
     };
   }
 
-  /* ---- Apuração Fiscal IRPF Cripto (Brasil; reporte via DeCripto, IN RFB 2.291/2025) ---- */
-  function computeTaxMonthSummary(assetKeys, trades = [], targetYearMonth, brlPerUsd = 5.5) {
-    const running = {};
-    assetKeys.forEach(k => { running[k] = { boughtQty: 0, boughtCost: 0 }; });
+  /* ---- Câmbio por operação ---- */
+  /**
+   * Cotação BRL/USD de uma operação. Prioridade: gravada na operação ("operation"),
+   * cotação atual ("current", estimada) e, por último, o fallback fixo ("fallback", estimada).
+   */
+  function resolveFx(t, currentBrlPerUsd) {
+    const own = Number(t.fxRate);
+    if (Number.isFinite(own) && own > 0) {
+      return { rate: own, source: t.fxSource === 'fallback' ? 'fallback' : 'operation' };
+    }
+    const cur = Number(currentBrlPerUsd);
+    if (Number.isFinite(cur) && cur > 0) return { rate: cur, source: 'current' };
+    return { rate: FALLBACK_BRL_PER_USD, source: 'fallback' };
+  }
 
-    let totalAlienationBRL = 0;
-    let totalRealizedGainBRL = 0;
-    const monthSales = [];
+  /* ---- Ganho de capital progressivo (regime nacional) ---- */
+  function capitalGainsTax(gainBRL) {
+    const gain = Math.max(0, Number(gainBRL) || 0);
+    let lower = 0;
+    let tax = 0;
+    const detail = [];
+    for (const b of CAPITAL_GAINS_BRACKETS) {
+      if (gain <= lower) break;
+      const slice = Math.min(gain, b.upTo) - lower;
+      const part = slice * b.rate;
+      tax += part;
+      detail.push({ rate: b.rate, base: slice, tax: part });
+      lower = b.upTo;
+    }
+    return { tax: round2(tax), detail };
+  }
+
+  /* ---- Apuração fiscal IRPF Cripto (Brasil; DeCripto IN RFB 2.291/2025) ---- */
+  /**
+   * Relatório completo, em R$ histórico: cada operação usa a cotação gravada no dia
+   * (custo = cotações das compras; alienação = cotação da venda).
+   *
+   * Regime nacional (custódia em exchange brasileira): mensal, isenção se alienação
+   * ≤ R$ 35.000,00 (em centavos), faixas de 15% a 22,5%, sem compensar perdas
+   * (postura conservadora: soma dos ganhos positivos por operação), DARF 4600 só se ≥ R$ 10.
+   * Regime exterior (Lei 14.754/2023): 15% fixo, anual, sem isenção, sem DARF mensal,
+   * perdas compensam no ano e passam aos anos seguintes.
+   *
+   * opts: { currentBrlPerUsd, defaultCustody }
+   */
+  function computeTaxReport(assetKeys, trades = [], opts = {}) {
+    const currentBrlPerUsd = opts.currentBrlPerUsd;
+    const defaultCustody = opts.defaultCustody === 'foreign' ? 'foreign' : 'national';
+    const pools = {};
+    (assetKeys || []).forEach(k => { pools[k] = { qty: 0, costUSD: 0, costBRL: 0, estimated: false }; });
+
+    const months = {};
+    const newMonth = (key) => ({
+      monthKey: key,
+      operations: [],
+      volumeBRL: 0,
+      volumeUSD: 0,
+      operationsCount: 0,
+      estimated: false,
+      fxFallback: false,
+      national: { alienationBRL: 0, alienationUSD: 0, netGainBRL: 0, taxableGainBRL: 0, lossBRL: 0, salesCount: 0 },
+      foreign: { alienationBRL: 0, alienationUSD: 0, netGainBRL: 0, salesCount: 0 }
+    });
 
     const sorted = [...trades].sort((a, b) => a.timestamp - b.timestamp);
     sorted.forEach(t => {
-      const a = t.asset;
-      const s = running[a] || { boughtQty: 0, boughtCost: 0 };
-      running[a] = s;
-
+      const pool = pools[t.asset] || (pools[t.asset] = { qty: 0, costUSD: 0, costBRL: 0, estimated: false });
       const qty = Number(t.qty) || 0;
-      const price = Number(t.price) || 0;
+      const key = monthKeySP(t.timestamp);
+      const m = months[key] || (months[key] = newMonth(key));
+      const fx = resolveFx(t, currentBrlPerUsd);
+      const grossUSD = tradeGrossUSD(t);
+      const netUSD = tradeNetUSD(t);
+      const custody = (t.custody === 'foreign' || t.custody === 'national') ? t.custody : defaultCustody;
 
-      const d = new Date(t.timestamp);
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      m.volumeBRL += grossUSD * fx.rate;
+      m.volumeUSD += grossUSD;
+      m.operationsCount += 1;
+      if (fx.source !== 'operation') m.estimated = true;
+      if (fx.source === 'fallback') m.fxFallback = true;
 
       if (t.type === 'buy') {
-        s.boughtQty += qty;
-        s.boughtCost += (qty * price);
+        pool.qty += qty;
+        pool.costUSD += netUSD;
+        pool.costBRL += netUSD * fx.rate;
+        if (fx.source !== 'operation') pool.estimated = true;
       } else if (t.type === 'sell') {
-        const avgCost = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        const netProceedsUSD = (qty * price);
-        const costBasisUSD = qty * avgCost;
-        const gainUSD = netProceedsUSD - costBasisUSD;
+        const avgUSD = pool.qty > 0 ? pool.costUSD / pool.qty : 0;
+        const avgBRL = pool.qty > 0 ? pool.costBRL / pool.qty : 0;
+        const costBasisUSD = avgUSD * qty;
+        const costBasisBRL = avgBRL * qty;
+        const alienationBRL = grossUSD * fx.rate; // limite de isenção: valor bruto da venda
+        const netAlienationBRL = netUSD * fx.rate;
+        const gainBRL = netAlienationBRL - costBasisBRL;
+        const gainUSD = netUSD - costBasisUSD;
+        const estimated = fx.source !== 'operation' || pool.estimated;
 
-        s.boughtQty = Math.max(0, s.boughtQty - qty);
-        s.boughtCost = Math.max(0, s.boughtCost - costBasisUSD);
+        pool.qty = Math.max(0, pool.qty - qty);
+        pool.costUSD = Math.max(0, pool.costUSD - costBasisUSD);
+        pool.costBRL = Math.max(0, pool.costBRL - costBasisBRL);
+        if (pool.qty <= 1e-12) { pool.qty = 0; pool.costUSD = 0; pool.costBRL = 0; pool.estimated = false; }
 
-        if (ym === targetYearMonth) {
-          const alienationBRL = netProceedsUSD * brlPerUsd;
-          const gainBRL = gainUSD * brlPerUsd;
-          totalAlienationBRL += alienationBRL;
-          totalRealizedGainBRL += gainBRL;
-          monthSales.push({
-            asset: a,
-            qty,
-            price,
-            proceedsUSD: netProceedsUSD,
-            alienationBRL,
-            gainBRL,
-            timestamp: t.timestamp
-          });
+        if (estimated) m.estimated = true;
+        const bucket = custody === 'foreign' ? m.foreign : m.national;
+        bucket.alienationBRL += alienationBRL;
+        bucket.alienationUSD += grossUSD;
+        bucket.netGainBRL += gainBRL;
+        bucket.salesCount += 1;
+        if (custody !== 'foreign') {
+          if (gainBRL > 0) m.national.taxableGainBRL += gainBRL; else m.national.lossBRL += -gainBRL;
         }
+        m.operations.push({
+          timestamp: t.timestamp, asset: t.asset, qty, price: Number(t.price) || 0, custody,
+          saleProceedsUsd: grossUSD, netProceedsUsd: netUSD, costsUsd: grossUSD - netUSD,
+          alienationBRL, gainBRL, gainUSD, fxRate: fx.rate, fxSource: fx.source, estimated,
+          avgCost: avgUSD, realizedGainUsd: gainUSD
+        });
       }
     });
 
-    const exemptionLimit = 35000; // Limite de isenção no Brasil (R$ 35.000,00)
-    const isExempt = totalAlienationBRL <= exemptionLimit;
-    const taxEstimatedBRL = (!isExempt && totalRealizedGainBRL > 0) ? (totalRealizedGainBRL * 0.15) : 0;
+    // Regime nacional: isenção, faixas e DARF mínimo com acúmulo entre meses
+    const monthKeys = Object.keys(months).sort();
+    let darfCarry = 0;
+    monthKeys.forEach(key => {
+      const m = months[key];
+      const n = m.national;
+      n.alienationBRL = round2(n.alienationBRL);
+      n.isExempt = n.alienationBRL <= EXEMPTION_LIMIT_BRL; // compara em centavos (evita erro de float)
+      n.exemptionLimit = EXEMPTION_LIMIT_BRL;
+      const cg = (!n.isExempt && n.taxableGainBRL > 0) ? capitalGainsTax(n.taxableGainBRL) : { tax: 0, detail: [] };
+      n.taxBRL = cg.tax;
+      n.brackets = cg.detail;
+      n.darfCarryInBRL = darfCarry;
+      const accumulated = round2(darfCarry + n.taxBRL);
+      if (accumulated > 0 && accumulated < DARF_MIN_BRL) {
+        n.darfBRL = 0;
+        n.darfCarryOutBRL = accumulated;
+        n.darfDeferred = true;
+      } else {
+        n.darfBRL = accumulated;
+        n.darfCarryOutBRL = 0;
+        n.darfDeferred = false;
+      }
+      darfCarry = n.darfCarryOutBRL;
+      m.volumeBRL = round2(m.volumeBRL);
+      m.decripto = {
+        volumeBRL: m.volumeBRL,
+        limitBRL: EXEMPTION_LIMIT_BRL,
+        triggered: m.volumeBRL > EXEMPTION_LIMIT_BRL
+      };
+      m.foreign.alienationBRL = round2(m.foreign.alienationBRL);
+    });
 
+    // Regime exterior: apuração anual, perdas compensam no ano e nos anos seguintes
+    const foreignYears = {};
+    monthKeys.forEach(key => {
+      const f = months[key].foreign;
+      if (!f.salesCount) return;
+      const y = key.slice(0, 4);
+      const fy = foreignYears[y] || (foreignYears[y] = { year: y, netGainBRL: 0, alienationBRL: 0, salesCount: 0, estimated: false });
+      fy.netGainBRL += f.netGainBRL;
+      fy.alienationBRL += f.alienationBRL;
+      fy.salesCount += f.salesCount;
+      if (months[key].operations.some(o => o.custody === 'foreign' && o.estimated)) fy.estimated = true;
+    });
+    let lossCarry = 0;
+    Object.keys(foreignYears).sort().forEach(y => {
+      const fy = foreignYears[y];
+      fy.lossCarryInBRL = lossCarry;
+      const adjusted = fy.netGainBRL - lossCarry;
+      fy.taxableBaseBRL = adjusted > 0 ? adjusted : 0;
+      fy.lossCarryOutBRL = adjusted < 0 ? -adjusted : 0;
+      fy.taxBRL = round2(fy.taxableBaseBRL * FOREIGN_RATE);
+      lossCarry = fy.lossCarryOutBRL;
+    });
+
+    return { months, monthKeys, foreignYears, fallbackBrlPerUsd: FALLBACK_BRL_PER_USD };
+  }
+
+  /** Compatibilidade: resumo de um mês (assinatura antiga). Operações sem cotação usam `brlPerUsd` (estimado). */
+  function computeTaxMonthSummary(assetKeys, trades = [], targetYearMonth, brlPerUsd = FALLBACK_BRL_PER_USD) {
+    const report = computeTaxReport(assetKeys, trades, { currentBrlPerUsd: brlPerUsd });
+    const m = report.months[targetYearMonth] || newEmptyMonth(targetYearMonth);
     return {
       targetYearMonth,
-      totalAlienationBRL,
-      exemptionLimit,
-      isExempt,
-      totalRealizedGainBRL,
-      taxEstimatedBRL,
-      monthSales
+      totalAlienationBRL: m.national.alienationBRL,
+      exemptionLimit: EXEMPTION_LIMIT_BRL,
+      isExempt: m.national.isExempt,
+      totalRealizedGainBRL: m.national.netGainBRL,
+      taxEstimatedBRL: m.national.taxBRL,
+      darfBRL: m.national.darfBRL,
+      estimated: m.estimated,
+      monthSales: m.operations
+    };
+  }
+  function newEmptyMonth(key) {
+    return {
+      monthKey: key, operations: [], estimated: false, volumeBRL: 0,
+      national: { alienationBRL: 0, netGainBRL: 0, isExempt: true, taxBRL: 0, darfBRL: 0 }
     };
   }
 
-  /* ---- Simulador DCA (Dollar Cost Averaging) ---- */
-  function calculateDCASimulation(currentPrice, periodicAmountUSD, frequencyDays, totalMonths, change24hPct = 0) {
+  /* ---- Simulador DCA (Dollar Cost Averaging) ----
+   * Ferramenta ilustrativa, SEM interface no app e sem previsão de retorno. Trajetória de preço
+   * determinística e neutra: onda cíclica de média zero + deriva linear do cenário
+   * ('flat' = 0%, 'up' = +20%, 'down' = -20% ao longo do período). Sem viés de alta embutido;
+   * o aporte único (lump sum) compra tudo ao mesmo preço inicial do 1º aporte do DCA.
+   */
+  const DCA_SCENARIO_DRIFT = { flat: 0, up: 0.2, down: -0.2 };
+  function calculateDCASimulation(currentPrice, periodicAmountUSD, frequencyDays, totalMonths, scenario = 'flat') {
     const price = Math.max(0.000001, Number(currentPrice) || 1);
     const amount = Math.max(0.01, Number(periodicAmountUSD) || 10);
     const freq = Math.max(1, Number(frequencyDays) || 30);
     const months = Math.max(1, Number(totalMonths) || 12);
+    const scenarioKey = Object.prototype.hasOwnProperty.call(DCA_SCENARIO_DRIFT, scenario) ? scenario : 'flat';
+    const drift = DCA_SCENARIO_DRIFT[scenarioKey];
 
     const totalDays = months * 30.5;
     const totalInstallments = Math.max(1, Math.floor(totalDays / freq));
     const totalInvestedUSD = totalInstallments * amount;
 
-    const trend = (Number(change24hPct) || 0) / 100;
+    const pathPrice = (t) => Math.max(price * 0.15, price * (1 + drift * t) * (1 + 0.2 * Math.sin(t * Math.PI * 2)));
+
     let accumulatedCoins = 0;
-
     for (let i = 0; i < totalInstallments; i++) {
-      const cycleProgress = i / totalInstallments;
-      // Modela oscilação cíclica típica do mercado para a média ponderada
-      const wave = Math.sin(cycleProgress * Math.PI * 2) * 0.20;
-      const simPrice = Math.max(price * 0.15, price * (1 - 0.15 + wave + (trend * 0.3)));
-      accumulatedCoins += amount / simPrice;
+      accumulatedCoins += amount / pathPrice(i / totalInstallments);
     }
-
-    const finalValueUSD = accumulatedCoins * price;
+    const finalPrice = pathPrice(1);
+    const finalValueUSD = accumulatedCoins * finalPrice;
     const avgCostUSD = totalInvestedUSD / accumulatedCoins;
     const profitUSD = finalValueUSD - totalInvestedUSD;
     const profitPct = totalInvestedUSD > 0 ? (profitUSD / totalInvestedUSD) * 100 : 0;
 
-    // Comparativo: Lump Sum (comprar tudo no primeiro dia)
-    const startPrice = Math.max(price * 0.15, price * (1 - 0.15 + (trend * 0.3)));
-    const lumpSumCoins = totalInvestedUSD / startPrice;
-    const lumpSumFinalUSD = lumpSumCoins * price;
+    const lumpSumCoins = totalInvestedUSD / pathPrice(0);
+    const lumpSumFinalUSD = lumpSumCoins * finalPrice;
     const lumpSumProfitPct = ((lumpSumFinalUSD - totalInvestedUSD) / totalInvestedUSD) * 100;
 
     return {
+      scenario: scenarioKey,
+      hypothetical: true,
       totalInstallments,
       totalInvestedUSD,
       accumulatedCoins,
@@ -300,6 +491,8 @@
   }
 
   /* ---- Calculadora de Meta de Lucro (Target Profit) ---- */
+  // Rendimentos HIPOTÉTICOS, sem fonte: não são previsão nem promessa de retorno.
+  const TARGET_PROFIT_TAX_RATE = 0.15;
   function calculateTargetProfitScenarios(targetAmountUSD, periodicity = 'month') {
     const rawTarget = Number(targetAmountUSD);
     const target = isNaN(rawTarget) || rawTarget < 0 ? 0 : rawTarget;
@@ -307,40 +500,23 @@
     const annualProfitUSD = isMonthly ? target * 12 : target;
 
     const scenarios = [
-      {
-        cenario: 'Conservador (Com folga)',
-        rendimentoPct: 5,
-        rendimentoLabel: '5% a.a.',
-        margem: 'Alta proteção contra quedas'
-      },
-      {
-        cenario: 'Moderado',
-        rendimentoPct: 10,
-        rendimentoLabel: '10% a.a.',
-        margem: 'Média de médio prazo'
-      },
-      {
-        cenario: 'Ciclo de Alta',
-        rendimentoPct: 15,
-        rendimentoLabel: '15% a.a.',
-        margem: 'Depende de forte valorização'
-      },
-      {
-        cenario: 'Lending / Juros',
-        rendimentoPct: 2,
-        rendimentoLabel: '2% a.a.',
-        margem: 'Renda passiva (sem vender moedas)'
-      }
+      { cenario: 'Conservador (Com folga)', rendimentoPct: 5, observacao: 'Hipótese: não protege contra quedas de preço' },
+      { cenario: 'Moderado', rendimentoPct: 10, observacao: 'Hipótese de médio prazo, sem garantia' },
+      { cenario: 'Ciclo de Alta', rendimentoPct: 15, observacao: 'Hipótese: depende de forte valorização' },
+      { cenario: 'Lending / Juros', rendimentoPct: 2, observacao: 'Renda passiva também é tributável' }
     ];
 
     const rows = scenarios.map(s => {
       const rate = s.rendimentoPct / 100;
-      const capitalUSD = rate > 0 ? (annualProfitUSD / rate) : 0;
+      // capital bruto necessário para que o lucro LÍQUIDO (após 15% de IR) atinja a meta
+      const capitalUSD = rate > 0 ? (annualProfitUSD / (rate * (1 - TARGET_PROFIT_TAX_RATE))) : 0;
       return {
         cenario: s.cenario,
-        rendimentoEstimado: s.rendimentoLabel,
+        rendimentoEstimado: `${s.rendimentoPct}% a.a. (hipotético)`,
+        rendimentoPct: s.rendimentoPct,
+        hipotetico: true,
         capitalUSD,
-        margemSeguranca: s.margem
+        observacao: s.observacao
       };
     });
 
@@ -348,6 +524,8 @@
       targetAmountUSD: target,
       periodicity: isMonthly ? 'month' : 'year',
       annualProfitUSD,
+      taxRate: TARGET_PROFIT_TAX_RATE,
+      hypothetical: true,
       rows
     };
   }
@@ -361,7 +539,22 @@
     computeCashBalance,
     computeSummary,
     computeTaxMonthSummary,
+    computeTaxReport,
+    capitalGainsTax,
+    resolveFx,
+    monthKeySP,
+    tradeGrossUSD,
+    tradeCostsUSD,
+    tradeNetUSD,
+    totalTradeCostsUSD,
     calculateDCASimulation,
-    calculateTargetProfitScenarios
+    calculateTargetProfitScenarios,
+    FALLBACK_BRL_PER_USD,
+    EXEMPTION_LIMIT_BRL,
+    DARF_MIN_BRL,
+    FOREIGN_RATE,
+    DEFAULT_SPREAD_PCT,
+    CAPITAL_GAINS_BRACKETS,
+    TAX_DISCLAIMERS
   };
 });
