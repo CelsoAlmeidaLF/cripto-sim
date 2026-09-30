@@ -650,7 +650,20 @@
   });
 
   /* ============ DADOS DA CARTEIRA ATUAL ============ */
-  let trades = [], chain = [], deposits = [], netWorthHistory = [], alerts = [], settings = { blockOverdraft: false };
+  // Configurações da carteira. Cópias antigas não têm custódia/spread: normalizeSettings preenche os padrões.
+  const defaultSettings = () => ({ blockOverdraft: false, custody: 'national', spreadPct: FinanceEngine.DEFAULT_SPREAD_PCT });
+  function normalizeSettings(raw) {
+    const base = defaultSettings();
+    const s = (raw && typeof raw === 'object') ? raw : {};
+    const spread = Number(s.spreadPct);
+    return {
+      ...s,
+      blockOverdraft: !!s.blockOverdraft,
+      custody: s.custody === 'foreign' ? 'foreign' : base.custody,
+      spreadPct: Number.isFinite(spread) && spread >= 0 && spread <= 50 ? spread : base.spreadPct
+    };
+  }
+  let trades = [], chain = [], deposits = [], netWorthHistory = [], alerts = [], settings = defaultSettings();
   let fileHandle = null;
   let connectedFilePassword = null; // fica só na memória desta sessão — nunca é salva
 
@@ -777,8 +790,9 @@
     deposits = chainToDeposits();
     try { netWorthHistory = JSON.parse(localStorage.getItem(keyFor('history'))) || []; } catch (e) { netWorthHistory = []; }
     try { alerts = JSON.parse(localStorage.getItem(keyFor('alerts'))) || []; } catch (e) { alerts = []; }
-    try { settings = JSON.parse(localStorage.getItem(keyFor('settings'))) || { blockOverdraft: false }; } catch (e) { settings = { blockOverdraft: false }; }
+    try { settings = normalizeSettings(JSON.parse(localStorage.getItem(keyFor('settings')))); } catch (e) { settings = defaultSettings(); }
     document.getElementById('blockOverdraftCheck').checked = !!settings.blockOverdraft;
+    syncTradeFormSettings();
   }
   function saveHistory() {
     try { localStorage.setItem(keyFor('history'), JSON.stringify(netWorthHistory)); } catch (e) {}
@@ -794,31 +808,34 @@
     saveSettings();
   });
 
+  // Todo cálculo financeiro vem do finance-engine.js (coberto pelos testes automatizados).
   function computeCashBalance() {
-    const totalDeposited = deposits.reduce((s, d) => s + d.amount, 0);
-    const totalBuy = trades.filter(t => t.type === 'buy').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price), 0);
-    const totalSell = trades.filter(t => t.type === 'sell').reduce((s, t) => s + (t.value != null ? t.value : t.qty * t.price), 0);
-    return totalDeposited - totalBuy + totalSell;
+    return FinanceEngine.computeCashBalance(deposits, trades);
   }
   function computeSummary() {
-    const perAsset = {};
-    ASSET_KEYS.forEach(a => { perAsset[a] = { boughtQty: 0, boughtCost: 0, soldQty: 0, soldProceeds: 0, realized: 0 }; });
-    [...trades].sort((a, b) => a.timestamp - b.timestamp).forEach(t => {
-      const s = perAsset[t.asset];
-      if (!s) return;
-      if (t.type === 'buy') {
-        s.boughtQty += t.qty;
-        s.boughtCost += (t.qty * t.price);
-      } else {
-        const avgCostAtSale = s.boughtQty > 0 ? (s.boughtCost / s.boughtQty) : 0;
-        s.realized += ((t.price - avgCostAtSale) * t.qty);
-        s.soldQty += t.qty;
-        s.soldProceeds += (t.qty * t.price);
-        s.boughtCost -= avgCostAtSale * t.qty;
-        s.boughtQty -= t.qty;
-      }
-    });
-    return perAsset;
+    return FinanceEngine.computeSummary(ASSET_KEYS, trades, {}).perAsset;
+  }
+  // Origem da cotação USD/BRL em uso ('CoinGecko', 'Binance', 'cache') — gravada em cada operação.
+  let fxSourceName = null;
+  function currentFx() {
+    if (usdPrice.brl) return { fxRate: 1 / usdPrice.brl, fxSource: fxSourceName || 'cache' };
+    return { fxRate: FinanceEngine.FALLBACK_BRL_PER_USD, fxSource: 'fallback' };
+  }
+  function numberFrom(id) {
+    const el = document.getElementById(id);
+    const n = el ? parseFloat(el.value) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  // Taxa da corretora (% ou USD) + spread/slippage estimado (%), em USD, para um valor de operação.
+  function readTradeCosts(value) {
+    const unitEl = document.getElementById('feeUnitSelect');
+    const fee = numberFrom('feeInput');
+    const feeUSD = unitEl && unitEl.value === 'usd' ? fee : value * fee / 100;
+    const spreadEl = document.getElementById('spreadInput');
+    const spreadPct = spreadEl && spreadEl.value !== ''
+      ? numberFrom('spreadInput')
+      : (Number.isFinite(Number(settings.spreadPct)) ? Number(settings.spreadPct) : FinanceEngine.DEFAULT_SPREAD_PCT);
+    return { feeUSD, spreadPct, spreadUSD: value * spreadPct / 100 };
   }
   function computeRunningBalances() {
     const running = {}; ASSET_KEYS.forEach(a => running[a] = 0);
@@ -1077,8 +1094,35 @@
     const asset = document.getElementById('assetSelect').value;
     const price = usdPrice[asset] || 0;
     const preview = document.getElementById('qtyPreview');
-    preview.textContent = (value > 0 && price > 0) ? `≈ ${fmtQty(value / price, asset)} ao preço atual (${fmt(price,'usd')})` : '';
+    let text = (value > 0 && price > 0) ? `≈ ${fmtQty(value / price, asset)} ao preço atual (${fmt(price,'usd')})` : '';
+    if (text && value > 0) {
+      const c = readTradeCosts(value);
+      const total = c.feeUSD + c.spreadUSD;
+      if (total > 0) text += ` · custos estimados ${fmt(total, 'usd')} (taxa ${fmt(c.feeUSD, 'usd')} + spread ${fmt(c.spreadUSD, 'usd')})`;
+    }
+    preview.textContent = text;
   }
+  function syncTradeFormSettings() {
+    const spread = document.getElementById('spreadInput');
+    const custody = document.getElementById('custodySelect');
+    if (spread) spread.value = settings.spreadPct;
+    if (custody) custody.value = settings.custody;
+  }
+  ['feeInput', 'spreadInput', 'feeUnitSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateQtyPreview);
+  });
+  document.getElementById('spreadInput').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    settings.spreadPct = Number.isFinite(v) && v >= 0 && v <= 50 ? v : FinanceEngine.DEFAULT_SPREAD_PCT;
+    e.target.value = settings.spreadPct;
+    saveSettings();
+    updateQtyPreview();
+  });
+  document.getElementById('custodySelect').addEventListener('change', (e) => {
+    settings.custody = e.target.value === 'foreign' ? 'foreign' : 'national';
+    saveSettings();
+  });
 
   function renderSimulator() {
     renderPortfolioSelect();
@@ -1092,7 +1136,8 @@
     const summary = computeSummary();
     const summaryCard = document.getElementById('summaryCard');
     let totalValue = 0, totalGain = 0, hasHoldings = false;
-    let totalRealized = 0, totalFees = 0;
+    let totalRealized = 0;
+    const totalFees = FinanceEngine.totalTradeCostsUSD(trades);
     const assetValues = {};
 
     let rows = ASSET_KEYS.map(a => {
@@ -1124,7 +1169,7 @@
           <div class="figures">
             <div class="value">${fmt(qty > 0 ? currentValue : 0, 'usd')}</div>
             <div class="secondary">${qty > 0 ? fmtBRLSecondary(currentValue) : ''}</div>
-            <div class="gain ${totalAssetGain >= 0 ? 'pos' : 'neg'}">${fmtGain(totalAssetGain)}${qty > 0 ? ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)' : ''} ${s.realized !== 0 ? '· realizado ' + fmtGain(s.realized) : ''}</div>
+            <div class="gain ${totalAssetGain >= 0 ? 'pos' : 'neg'}">${fmtGain(totalAssetGain)} total${qty > 0 ? ' · não realizado ' + fmtGain(unrealized) + ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)' : ''}${s.realized !== 0 ? ' · realizado ' + fmtGain(s.realized) : ''}</div>
           </div>
         </div>`;
     }).join('');
@@ -1136,6 +1181,7 @@
         <div class="totals"><div class="label">Valor total em ativos</div><div class="value">${fmt(totalValue,'usd')}<div class="secondary">${fmtBRLSecondary(totalValue)}</div></div></div>
         <div class="totals"><div class="label">Lucro não-realizado (posições abertas)</div><div class="value" style="color:${totalUnrealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalUnrealized)}</div></div>
         <div class="totals"><div class="label">Lucro realizado (vendas encerradas)</div><div class="value" style="color:${totalRealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalRealized)}</div></div>
+        <div class="totals"><div class="label">Custos pagos (taxas + spread estimado, já incluídos no resultado)</div><div class="value">${fmt(totalFees,'usd')}</div></div>
         <div class="totals" style="border-top:2px solid var(--line); font-weight:600;"><div class="label" style="color:var(--ink);">Resultado global líquido</div><div class="value" style="color:${totalGain >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalGain)}</div></div>`;
     }
     const netWorth = cashBalance + totalValue;
@@ -1161,6 +1207,7 @@
         <div class="timeline-text">
           <div class="main">${t.type === 'buy' ? 'Compra' : 'Venda'} de ${fmt(t.value != null ? t.value : t.qty * t.price, 'usd')} em ${ASSETS[t.asset].name}</div>
           <div class="sub">${fmtQty(t.qty, t.asset)} a ${fmt(t.price,'usd')} · saldo após: ${fmtQty(Math.max(t.balanceAfter,0), t.asset)}</div>
+          ${(() => { const c = FinanceEngine.tradeCostsUSD(t); const tot = c.fee + c.spread; const fxTxt = t.fxRate ? ` · USD/BRL ${Number(t.fxRate).toFixed(4)}${t.fxSource === 'fallback' ? ' (estimado)' : ''}` : ' · USD/BRL não gravado (antigo)'; return `<div class="sub">${tot > 0 ? 'custos ' + fmt(tot, 'usd') + ' · ' : ''}${t.custody === 'foreign' ? 'exterior' : 'exchange nacional'}${fxTxt}</div>`; })()}
           <div class="sub" style="opacity:0.6;">${new Date(t.timestamp).toLocaleString('pt-BR')} · bloco #${t._index} · hash ${t._hash ? t._hash.slice(0,12) + '…' : '—'}</div>
         </div>
       </div>`;
@@ -1191,6 +1238,8 @@
 
     let qty = value / price;
     if (!Number.isFinite(qty) || qty <= 0) return;
+    const costs = readTradeCosts(value);
+    const totalCosts = costs.feeUSD + costs.spreadUSD;
     if (currentType === 'sell') {
       const availableQty = computeSummary()[asset]?.boughtQty || 0;
       if (!Number.isFinite(availableQty) || availableQty <= 0) {
@@ -1206,7 +1255,12 @@
       qty = Math.min(qty, availableQty);
     }
 
-    if (currentType === 'buy' && value > computeCashBalance()) {
+    if (currentType === 'sell' && totalCosts >= value) {
+      document.getElementById('ioStatus').textContent = 'operação bloqueada: taxa e spread somam mais que o valor da venda';
+      return;
+    }
+
+    if (currentType === 'buy' && value + totalCosts > computeCashBalance()) {
       if (settings.blockOverdraft) {
         document.getElementById('ioStatus').textContent = 'operação bloqueada: valor maior que o saldo disponível';
         return;
@@ -1225,11 +1279,17 @@
       value,
       price,
       qty,
+      feeUSD: costs.feeUSD,
+      spreadUSD: costs.spreadUSD,
+      spreadPct: costs.spreadPct,
+      custody: (document.getElementById('custodySelect') || {}).value === 'foreign' ? 'foreign' : (settings.custody === 'foreign' ? 'foreign' : 'national'),
+      ...currentFx(),
       timestamp: Date.now()
     });
     saveChain();
     trades = chainToTrades();
     document.getElementById('valueInput').value = '';
+    if (document.getElementById('feeInput')) document.getElementById('feeInput').value = '';
     document.getElementById('qtyPreview').textContent = '';
     submitBtn.disabled = false;
     submitBtn.textContent = currentType === 'buy' ? 'Registrar compra' : 'Registrar venda';
@@ -1255,37 +1315,7 @@
     const targetVal = parseFloat(targetInput.value);
     const periodicity = periodSelect.value;
     
-    const calcFn = (typeof calculateTargetProfitScenarios === 'function')
-      ? calculateTargetProfitScenarios
-      : (window.FinanceEngine && typeof window.FinanceEngine.calculateTargetProfitScenarios === 'function')
-        ? window.FinanceEngine.calculateTargetProfitScenarios
-        : null;
-
-    if (!calcFn) {
-      // Fallback seguro caso o script não tenha sido carregado
-      const rawTarget = Number(targetVal);
-      const target = isNaN(rawTarget) || rawTarget < 0 ? 0 : rawTarget;
-      const annualProfitUSD = String(periodicity).toLowerCase() === 'month' ? target * 12 : target;
-      const rows = [
-        { cenario: 'Conservador (Com folga)', rendimentoLabel: '5% a.a.', capitalUSD: annualProfitUSD / 0.05, margem: 'Alta proteção contra quedas' },
-        { cenario: 'Moderado', rendimentoLabel: '10% a.a.', capitalUSD: annualProfitUSD / 0.10, margem: 'Média de médio prazo' },
-        { cenario: 'Ciclo de Alta', rendimentoLabel: '15% a.a.', capitalUSD: annualProfitUSD / 0.15, margem: 'Depende de forte valorização' },
-        { cenario: 'Lending / Juros', rendimentoLabel: '2% a.a.', capitalUSD: annualProfitUSD / 0.02, margem: 'Renda passiva (sem vender moedas)' }
-      ];
-      tableBody.innerHTML = rows.map(row => `
-        <tr style="border-bottom:1px solid var(--line);">
-          <td style="padding:10px 8px; font-weight:600; color:var(--ink);">${row.cenario}</td>
-          <td style="padding:10px 8px; text-align:center; color:var(--ink-dim);">${row.rendimentoLabel}</td>
-          <td style="padding:10px 8px; text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);">
-            ${row.capitalUSD > 0 ? fmt(row.capitalUSD, 'usd') : '$0.00'}
-          </td>
-          <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.margem}</td>
-        </tr>
-      `).join('');
-      return;
-    }
-
-    const calc = calcFn(targetVal, periodicity);
+    const calc = FinanceEngine.calculateTargetProfitScenarios(targetVal, periodicity);
 
     tableBody.innerHTML = calc.rows.map(row => `
       <tr style="border-bottom:1px solid var(--line);">
@@ -1294,7 +1324,7 @@
         <td style="padding:10px 8px; text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);">
           ${row.capitalUSD > 0 ? fmt(row.capitalUSD, 'usd') : '$0.00'}
         </td>
-        <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.margemSeguranca}</td>
+        <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.observacao}</td>
       </tr>
     `).join('');
   }
@@ -1393,7 +1423,7 @@
         deposits = chainToDeposits();
         netWorthHistory = Array.isArray(imported.netWorthHistory) ? imported.netWorthHistory : [];
         alerts = Array.isArray(imported.alerts) ? imported.alerts : [];
-        settings = imported.settings || settings;
+        settings = normalizeSettings(imported.settings || settings);
         saveChain(); saveHistory(); saveAlerts(); saveSettings();
         renderSimulator();
         document.getElementById('ioStatus').textContent = `${trades.length} operações e ${deposits.length} depósitos importados — integridade da blockchain verificada`
@@ -1440,13 +1470,17 @@
         totalValue: t.value != null ? t.value : t.qty * t.price,
         balanceAfter: t.balanceAfter != null ? t.balanceAfter.toFixed(6) : '—',
         blockIndex: t._index != null ? t._index : '—',
-        blockHash: t._hash || '—'
+        blockHash: t._hash || '—',
+        costs: (() => { const c = FinanceEngine.tradeCostsUSD(t); return c.fee + c.spread; })(),
+        fxRate: t.fxRate ? Number(t.fxRate) : '',
+        fxSource: t.fxRate ? t.fxSource : 'não gravado',
+        custody: t.custody === 'foreign' ? 'exterior' : 'nacional'
       });
     });
 
     allEvents.sort((a, b) => a.timestamp - b.timestamp);
 
-    const headers = ['Data/Hora (ISO)', 'Data/Hora (Local)', 'Tipo', 'Ativo', 'Nome', 'Quantidade', 'Preço Unitário (USD)', 'Valor Total (USD)', 'Saldo Posição Após', 'Bloco #', 'Hash do Bloco'];
+    const headers = ['Data/Hora (ISO)', 'Data/Hora (Local)', 'Tipo', 'Ativo', 'Nome', 'Quantidade', 'Preço Unitário (USD)', 'Valor Total (USD)', 'Saldo Posição Após', 'Bloco #', 'Hash do Bloco', 'Taxa+Spread (USD)', 'Câmbio USD/BRL', 'Origem do câmbio', 'Custódia'];
     const csvLines = [headers.map(h => `"${h}"`).join(';')];
 
     allEvents.forEach(e => {
@@ -1461,7 +1495,11 @@
         typeof e.totalValue === 'number' ? e.totalValue.toFixed(2).replace('.', ',') : `"${e.totalValue}"`,
         `"${e.balanceAfter}"`,
         `"${e.blockIndex}"`,
-        `"${e.blockHash}"`
+        `"${e.blockHash}"`,
+        typeof e.costs === 'number' ? e.costs.toFixed(2).replace('.', ',') : '""',
+        typeof e.fxRate === 'number' ? e.fxRate.toFixed(4).replace('.', ',') : '""',
+        `"${e.fxSource || ''}"`,
+        `"${e.custody || ''}"`
       ].join(';'));
     });
 
@@ -1474,148 +1512,132 @@
   /* ---- modal de Relatório Fiscal & IRPF (DeCripto, IN RFB 2.291/2025) ---- */
   let selectedTaxMonth = '';
 
+  // Cálculo fiscal 100% no finance-engine.js (R$ histórico por operação, regimes, faixas, DARF mínimo).
   function computeTaxReport() {
-    const monthsData = {};
-    const brlRate = usdPrice.brl ? (1 / usdPrice.brl) : 5.4;
-
-    const runningPerAsset = {};
-    ASSET_KEYS.forEach(a => { runningPerAsset[a] = { qty: 0, cost: 0 }; });
-
-    [...trades].sort((a,b) => a.timestamp - b.timestamp).forEach(t => {
-      const s = runningPerAsset[t.asset];
-      if (!s) return;
-      const d = new Date(t.timestamp);
-      const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthsData[mKey]) {
-        monthsData[mKey] = {
-          monthKey: mKey,
-          label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-          salesUsd: 0,
-          salesBrl: 0,
-          realizedUsd: 0,
-          realizedBrl: 0,
-          operations: []
-        };
-      }
-
-      if (t.type === 'buy') {
-        s.qty += t.qty;
-        s.cost += (t.qty * t.price);
-      } else {
-        const avgCost = s.qty > 0 ? (s.cost / s.qty) : 0;
-        const saleProceedsUsd = t.value != null ? t.value : (t.qty * t.price);
-        const realizedGainUsd = ((t.price - avgCost) * t.qty);
-        const saleProceedsBrl = saleProceedsUsd * brlRate;
-        const realizedGainBrl = realizedGainUsd * brlRate;
-
-        monthsData[mKey].salesUsd += saleProceedsUsd;
-        monthsData[mKey].salesBrl += saleProceedsBrl;
-        monthsData[mKey].realizedUsd += realizedGainUsd;
-        monthsData[mKey].realizedBrl += realizedGainBrl;
-
-        monthsData[mKey].operations.push({
-          date: d,
-          asset: t.asset,
-          qty: t.qty,
-          price: t.price,
-          saleProceedsUsd,
-          avgCost,
-          realizedGainUsd
-        });
-
-        s.cost -= avgCost * t.qty;
-        s.qty -= t.qty;
-      }
+    return FinanceEngine.computeTaxReport(ASSET_KEYS, trades, {
+      currentBrlPerUsd: usdPrice.brl ? (1 / usdPrice.brl) : null,
+      defaultCustody: settings.custody
     });
-
-    return monthsData;
   }
 
+  const brl = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
   function renderTaxModal() {
-    const taxData = computeTaxReport();
-    const months = Object.keys(taxData).sort().reverse();
-    const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-
-    if (!selectedTaxMonth || !taxData[selectedTaxMonth]) {
-      selectedTaxMonth = months[0] || currentMonthKey;
-    }
-
-    const current = taxData[selectedTaxMonth] || {
-      monthKey: selectedTaxMonth,
-      label: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-      salesUsd: 0,
-      salesBrl: 0,
-      realizedUsd: 0,
-      realizedBrl: 0,
-      operations: []
+    const report = computeTaxReport();
+    const months = [...report.monthKeys].reverse();
+    const nowKey = FinanceEngine.monthKeySP(Date.now());
+    const labelOf = (key) => {
+      const [y, m] = key.split('-').map(Number);
+      return new Date(y, m - 1, 15).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     };
 
-    const isExempt = current.salesBrl <= 35000;
-    const estimatedTaxBrl = (!isExempt && current.realizedBrl > 0) ? (current.realizedBrl * 0.15) : 0;
-    const decriptoApplies = current.salesBrl > 35000;
+    if (!selectedTaxMonth || !report.months[selectedTaxMonth]) {
+      selectedTaxMonth = months[0] || nowKey;
+    }
+    const empty = { monthKey: selectedTaxMonth, operations: [], estimated: false, fxFallback: false, volumeBRL: 0,
+      national: { alienationBRL: 0, netGainBRL: 0, taxableGainBRL: 0, lossBRL: 0, isExempt: true, taxBRL: 0, darfBRL: 0, darfCarryInBRL: 0, darfCarryOutBRL: 0, darfDeferred: false, brackets: [] },
+      foreign: { alienationBRL: 0, netGainBRL: 0, salesCount: 0 }, decripto: { volumeBRL: 0, triggered: false } };
+    const current = report.months[selectedTaxMonth] || empty;
+    const n = current.national;
+    const year = selectedTaxMonth.slice(0, 4);
+    const fy = report.foreignYears[year];
+    const LIMIT = FinanceEngine.EXEMPTION_LIMIT_BRL;
+    const anyFallback = usdPrice.brl == null;
+
+    const fxWarn = [];
+    if (current.estimated) fxWarn.push('<strong>Valores estimados:</strong> há operações sem a cotação USD/BRL do dia gravada (registradas em versões anteriores); foi usada a cotação atual. Revise antes de declarar.');
+    if (current.fxFallback) fxWarn.push('<strong>Câmbio de contingência:</strong> sem cotação disponível, usado R$ ' + FinanceEngine.FALLBACK_BRL_PER_USD.toFixed(2).replace('.', ',') + ' por dólar (valor fixo do aplicativo, não é cotação real).');
+    if (anyFallback) fxWarn.push('A cotação USD/BRL atual não foi carregada; novas operações registradas agora usam o câmbio de contingência.');
+
+    const statusBadge = n.alienationBRL === 0
+      ? '<span class="tax-badge exempt">SEM VENDAS NACIONAIS</span>'
+      : `<span class="tax-badge ${n.isExempt ? 'exempt' : 'taxable'}">${n.isExempt ? 'ISENTO (vendas nacionais ≤ R$ 35.000,00)' : 'TRIBUTÁVEL (vendas nacionais > R$ 35.000,00)'}</span>`;
+
+    const darfNote = n.darfDeferred
+      ? `Imposto abaixo de R$ 10,00: não recolher; ${brl(n.darfCarryOutBRL)} acumulam para o mês seguinte`
+      : (n.darfBRL > 0 ? `DARF 4600${n.darfCarryInBRL > 0 ? ' (inclui ' + brl(n.darfCarryInBRL) + ' acumulados)' : ''}` : (n.isExempt ? 'Isento de DARF' : 'Sem DARF neste mês'));
+
+    const opRows = current.operations.map(op => {
+      const foreign = op.custody === 'foreign';
+      return `
+          <div class="timeline-item">
+            <div class="timeline-dot sell"></div>
+            <div class="timeline-text">
+              <div class="main">Venda de ${fmtQty(op.qty, op.asset)} (${ASSETS[op.asset].name}) · ${foreign ? 'exterior' : 'exchange nacional'}</div>
+              <div class="sub">Alienação: ${brl(op.alienationBRL)} (${fmt(op.saleProceedsUsd, 'usd')} a R$ ${op.fxRate.toFixed(4).replace('.', ',')}/USD${op.fxSource === 'operation' ? '' : ', ' + (op.fxSource === 'fallback' ? 'câmbio de contingência' : 'câmbio atual estimado')})</div>
+              <div class="sub">Ganho: <span style="color:${op.gainBRL >= 0 ? 'var(--up)' : 'var(--down)'};">${brl(op.gainBRL)}</span> (${fmtGain(op.gainUSD)})${op.estimated ? ' · <strong>estimado</strong>' : ''}</div>
+              <div class="sub" style="opacity:0.6;">${new Date(op.timestamp).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (Brasília)</div>
+            </div>
+          </div>`;
+    }).join('');
+
+    const foreignBlock = (current.foreign.salesCount || fy) ? `
+      <div class="tax-notice" style="border-left-color:var(--accent);">
+        <strong>Custódia no exterior (Lei 14.754/2023; IN RFB 2.180/2024, art. 9º):</strong> 15% fixo, apuração anual na declaração, sem isenção de R$ 35.000,00 e sem DARF mensal. Perdas compensam no ano e passam aos anos seguintes.<br>
+        ${current.foreign.salesCount ? `Neste mês: alienação ${brl(current.foreign.alienationBRL)}, resultado ${brl(current.foreign.netGainBRL)}.<br>` : ''}
+        ${fy ? `Ano ${year}: resultado ${brl(fy.netGainBRL)}${fy.lossCarryInBRL > 0 ? ' − prejuízo de anos anteriores ' + brl(fy.lossCarryInBRL) : ''} = base ${brl(fy.taxableBaseBRL)} → imposto anual estimado <strong>${brl(fy.taxBRL)}</strong>${fy.lossCarryOutBRL > 0 ? ' · prejuízo a compensar em ' + (Number(year) + 1) + ': ' + brl(fy.lossCarryOutBRL) : ''}${fy.estimated ? ' · <strong>estimado</strong>' : ''}.` : ''}
+      </div>` : '';
 
     const content = document.getElementById('taxModalContent');
     content.innerHTML = `
       <div style="margin-bottom:14px;">
         <label>Selecione o Mês de Apuração</label>
         <select id="taxMonthSelect">
-          ${months.length ? months.map(m => `<option value="${m}" ${m === selectedTaxMonth ? 'selected' : ''}>${taxData[m].label.toUpperCase()} (${taxData[m].operations.length} vendas)</option>`).join('') : `<option value="${currentMonthKey}">${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</option>`}
+          ${months.length ? months.map(m => `<option value="${m}" ${m === selectedTaxMonth ? 'selected' : ''}>${labelOf(m).toUpperCase()} (${report.months[m].operations.length} vendas)</option>`).join('') : `<option value="${nowKey}">${labelOf(nowKey).toUpperCase()}</option>`}
         </select>
       </div>
 
+      ${fxWarn.length ? `<div class="tax-notice" style="border-left-color:var(--down); margin-bottom:12px;">${fxWarn.join('<br>')}</div>` : ''}
+
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <span style="font-size:13px; font-weight:600;">Status Tributário:</span>
-        <span class="tax-badge ${isExempt ? 'exempt' : 'taxable'}">
-          ${isExempt ? 'ISENTO (Vendas ≤ R$ 35.000)' : 'TRIBUTÁVEL (Vendas > R$ 35.000)'}
-        </span>
+        <span style="font-size:13px; font-weight:600;">Status Tributário (exchange nacional):</span>
+        ${statusBadge}
       </div>
 
       <div class="tax-stat-grid">
         <div class="tax-card">
-          <div class="k">TOTAL ALIENADO (VENDAS)</div>
-          <div class="v">${current.salesBrl.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">≈ ${fmt(current.salesUsd, 'usd')}</div>
+          <div class="k">TOTAL ALIENADO (NACIONAL)</div>
+          <div class="v">${brl(n.alienationBRL)}</div>
+          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">em R$ da data de cada venda</div>
         </div>
         <div class="tax-card">
           <div class="k">LIMITE DE ISENÇÃO</div>
           <div class="v" style="color:var(--ink-dim);">R$ 35.000,00</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${((current.salesBrl / 35000) * 100).toFixed(1)}% do teto atingido</div>
+          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${((n.alienationBRL / LIMIT) * 100).toFixed(1)}% do teto atingido</div>
         </div>
         <div class="tax-card">
-          <div class="k">LUCRO REALIZADO LÍQUIDO</div>
-          <div class="v" style="color:${current.realizedBrl >= 0 ? 'var(--up)' : 'var(--down)'};">
-            ${current.realizedBrl.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}
-          </div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">≈ ${fmtGain(current.realizedUsd)}</div>
+          <div class="k">RESULTADO REALIZADO (NACIONAL)</div>
+          <div class="v" style="color:${n.netGainBRL >= 0 ? 'var(--up)' : 'var(--down)'};">${brl(n.netGainBRL)}</div>
+          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">base tributável (só ganhos, sem compensar perdas): ${brl(n.taxableGainBRL)}</div>
         </div>
         <div class="tax-card">
-          <div class="k">IMPOSTO ESTIMADO (15%)</div>
-          <div class="v" style="color:${estimatedTaxBrl > 0 ? 'var(--down)' : 'var(--up)'};">
-            ${estimatedTaxBrl.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}
-          </div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${isExempt ? 'Isento de DARF' : 'DARF código 4600'}</div>
+          <div class="k">IMPOSTO ESTIMADO (15% A 22,5%)</div>
+          <div class="v" style="color:${n.taxBRL > 0 ? 'var(--down)' : 'var(--up)'};">${brl(n.taxBRL)}</div>
+          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${darfNote}</div>
         </div>
       </div>
 
+      ${foreignBlock}
+
       <div class="tax-notice">
-        <strong>Regras da Receita Federal (Brasil):</strong><br>
-        • Vendas totais de criptoativos em qualquer mês até R$ 35.000,00 contam com isenção sobre o ganho de capital.<br>
-        • Se o valor de vendas ultrapassar R$ 35.000,00 no mês, todo o ganho de capital líquido é tributado a 15% (DARF 4600 com vencimento até o último dia útil do mês seguinte).<br>
-        ${decriptoApplies ? '• <strong>Atenção DeCripto (IN RFB 2.291/2025):</strong> Volume mensal passou de R$ 35.000,00 — exige declaração mensal no e-CAC se realizado em exchanges do exterior, P2P ou DeFi.' : '• DeCripto (IN RFB 2.291/2025, desde jul/2026): declaração mensal obrigatória se movimentações no exterior/P2P/DeFi passarem de R$ 35.000,00/mês.'}
+        <strong>Regras (exchange nacional):</strong><br>
+        • Vendas totais de criptoativos no mês, somando todas as criptos, até R$ 35.000,00 têm isenção do ganho de capital (limite comparado em centavos); acima disso todo o ganho é tributado.<br>
+        • Alíquotas progressivas por faixa de ganho: 15% até R$ 5 mi; 17,5% até R$ 10 mi; 20% até R$ 30 mi; 22,5% acima.<br>
+        • Postura conservadora: o imposto incide sobre a soma dos ganhos positivos, sem abater prejuízos do mesmo mês (compensação pendente de validação com contador).<br>
+        • DARF código 4600 até o último dia útil do mês seguinte; imposto abaixo de R$ 10,00 não é recolhido e acumula para os meses seguintes.<br>
+        • Vender cripto por USDT ou outra stablecoin (permuta) é tributável como venda por reais.<br>
+        • Mês de apuração pelo horário de Brasília. Taxas de corretagem entram no custo (compra) e reduzem a alienação (venda); o limite de isenção usa o valor bruto.<br>
+        • <strong>DeCripto (IN RFB 2.291/2025):</strong> o gatilho soma compras, vendas, permutas e transferências do mês. Volume registrado neste mês: <strong>${brl(current.decripto.volumeBRL)}</strong>${current.decripto.triggered ? ' — <strong>acima de R$ 35.000,00: pode exigir declaração mensal (operações em exchange do exterior, P2P ou DeFi)</strong>.' : ' — abaixo de R$ 35.000,00.'} O app não registra permutas nem transferências, então o volume pode estar subestimado.
+      </div>
+
+      <div class="tax-notice" style="border-left-color:var(--ink-dim);">
+        <strong>Avisos:</strong><br>
+        ${FinanceEngine.TAX_DISCLAIMERS.map((d, i) => `${i + 1}. ${d}`).join('<br>')}
       </div>
 
       <div style="margin-top:16px;">
         <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Vendas registradas neste mês (${current.operations.length})</div>
-        ${current.operations.length ? current.operations.map(op => `
-          <div class="timeline-item">
-            <div class="timeline-dot sell"></div>
-            <div class="timeline-text">
-              <div class="main">Venda de ${fmtQty(op.qty, op.asset)} (${ASSETS[op.asset].name})</div>
-              <div class="sub">Total: ${fmt(op.saleProceedsUsd, 'usd')} · Ganho: <span style="color:${op.realizedGainUsd >= 0 ? 'var(--up)' : 'var(--down)'};">${fmtGain(op.realizedGainUsd)}</span></div>
-              <div class="sub" style="opacity:0.6;">${op.date.toLocaleString('pt-BR')}</div>
-            </div>
-          </div>
-        `).join('') : '<div class="empty-note">Nenhuma venda registrada neste mês.</div>'}
+        ${opRows || '<div class="empty-note">Nenhuma venda registrada neste mês.</div>'}
       </div>
     `;
 
@@ -1743,7 +1765,7 @@
       deposits = chainToDeposits();
       netWorthHistory = Array.isArray(parsed.netWorthHistory) ? parsed.netWorthHistory : [];
       alerts = Array.isArray(parsed.alerts) ? parsed.alerts : [];
-      settings = parsed.settings || settings;
+      settings = normalizeSettings(parsed.settings || settings);
       saveChain(); saveHistory(); saveAlerts(); saveSettings();
       renderSimulator();
     } catch (e) {}
@@ -1862,6 +1884,7 @@
       });
       if (data.bitcoin && data.bitcoin.usd && data.bitcoin.brl) {
         usdPrice.brl = data.bitcoin.usd / data.bitcoin.brl;
+        fxSourceName = 'CoinGecko';
       }
       sourceName = 'CoinGecko';
       success = true;
@@ -1883,7 +1906,7 @@
         });
         if (bMap['USDTBRL']) {
           const usdtBrl = parseFloat(bMap['USDTBRL'].lastPrice);
-          if (usdtBrl > 0) usdPrice.brl = 1 / usdtBrl;
+          if (usdtBrl > 0) { usdPrice.brl = 1 / usdtBrl; fxSourceName = 'Binance'; }
         }
         sourceName = 'Binance (fallback)';
         success = true;
@@ -1892,6 +1915,7 @@
         const cachedTime = loadCachedPrices();
         if (cachedTime) {
           sourceName = 'Cache local (offline)';
+          if (usdPrice.brl) fxSourceName = 'cache';
           success = true;
         }
       }

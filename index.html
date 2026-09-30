@@ -208,7 +208,31 @@
               <label>Preço por unidade (USD) — cotação de mercado em tempo real</label>
               <input type="number" id="priceInput" step="any" min="0" readonly>
             </div>
+            <div>
+              <label for="feeInput">Taxa da corretora</label>
+              <div style="display:flex; gap:6px;">
+                <input type="number" id="feeInput" step="any" min="0" placeholder="0" style="flex:1; min-width:0;">
+                <select id="feeUnitSelect" aria-label="Unidade da taxa" style="flex:0 0 auto;">
+                  <option value="pct">%</option>
+                  <option value="usd">USD</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label for="spreadInput">Spread/slippage estimado (%)</label>
+              <input type="number" id="spreadInput" step="any" min="0" max="50" placeholder="1">
+            </div>
+            <div class="full">
+              <label for="custodySelect">Local de custódia (define o regime fiscal)</label>
+              <select id="custodySelect">
+                <option value="national">Exchange nacional (ganho de capital mensal, isenção R$ 35 mil)</option>
+                <option value="foreign">Exterior / autocustódia (Lei 14.754/2023: 15% ao ano)</option>
+              </select>
+            </div>
             <div class="full" id="qtyPreview" style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--ink-dim);"></div>
+            <div class="full" style="font-size:11.5px; color:var(--ink-dim); line-height:1.5;">
+              O preço é a cotação média de mercado; o spread estimado simula a diferença até o preço realmente executado. Taxa e spread entram no custo (compra) ou reduzem o valor recebido (venda). Vender cripto por USDT ou outra stablecoin é permuta tributável, igual a vender por reais.
+            </div>
             <button type="submit" class="submit-btn" id="submitBtn">Registrar compra</button>
           </form>
         </div>
@@ -262,7 +286,7 @@
       <section>
         <div class="card" style="margin-bottom:20px;">
           <div style="font-size:13px; color:var(--ink-dim); margin-bottom:16px; line-height:1.5;">
-            Defina quanto você quer lucrar. O simulador calcula quanto capital é preciso alocar em cada perfil de mercado com margem de segurança contra quedas e volatilidade.
+            Defina quanto você quer lucrar. O simulador calcula quanto capital bruto é preciso alocar em cada cenário para o lucro líquido de 15% de IR atingir a meta. Os rendimentos são hipóteses sem fonte, não previsão nem promessa de retorno; renda passiva (lending/staking) também é tributável.
           </div>
           <form id="targetProfitForm" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;">
             <div style="flex:1; min-width:160px;">
@@ -283,9 +307,9 @@
               <thead>
                 <tr style="border-bottom:1px solid var(--line); color:var(--ink-dim); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
                   <th style="padding:12px 10px;">Cenário de Mercado</th>
-                  <th style="padding:12px 10px; text-align:center;">Rendimento Estimado</th>
-                  <th style="padding:12px 10px; text-align:right;">Capital em Dólares</th>
-                  <th style="padding:12px 10px; text-align:right;">Margem de Segurança</th>
+                  <th style="padding:12px 10px; text-align:center;">Rendimento hipotético</th>
+                  <th style="padding:12px 10px; text-align:right;">Capital bruto (USD)</th>
+                  <th style="padding:12px 10px; text-align:right;">Observação</th>
                 </tr>
               </thead>
               <tbody id="targetProfitTableBody"></tbody>
@@ -297,6 +321,16 @@
 
     <footer>
       Preços via CoinGecko, atualizados a cada 20 segundos. O histórico de operações e depósitos de saldo fica numa blockchain local (cadeia de blocos com hash SHA-256) dentro deste navegador — cada ação vira um bloco imutável, verificável a qualquer momento pelo botão "Verificar integridade". Isso é uma cadeia local, não uma rede distribuída como Bitcoin/Ethereum. PIN, bloqueio automático e demais configurações ficam em Configurações (menu ⋮ no topo). Arquivos exportados ou conectados são protegidos por PIN e criptografia AES-256-GCM. Ganho realizado considera o custo médio no momento de cada venda.
+      <div id="fiscalDisclaimers" style="margin-top:10px; padding:10px; border-left:3px solid var(--warn); background:var(--surface-2); border-radius:6px;">
+        <strong>Avisos importantes:</strong>
+        <ol style="margin:6px 0 0 18px; padding:0;">
+          <li>Simulação educativa: não substitui contador, o GCAP nem a declaração de ajuste anual.</li>
+          <li>O regime depende do local de custódia: exchange nacional (ganho de capital mensal, isenção de R$ 35 mil, DARF 4600) ou exterior (Lei 14.754/2023: 15% fixo, apuração anual na declaração, sem isenção de R$ 35 mil e sem DARF mensal).</li>
+          <li>O câmbio USD/BRL usado é indicativo (mercado/cripto), não a PTAX do Banco Central, que é a cotação oficial da apuração.</li>
+          <li>Os rendimentos da Meta de Lucro são hipóteses sem fonte, não promessa nem previsão de retorno; renda passiva (lending/staking) também é tributável.</li>
+          <li>Legislação vigente em set/2026. A MP 1.303/2025 (alíquota única) caducou, mas o tema pode voltar; confira as regras antes de decidir.</li>
+        </ol>
+      </div>
     </footer>
   </div>
 
