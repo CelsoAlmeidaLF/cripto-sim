@@ -94,39 +94,34 @@ test('Simulador DCA - Happy path: Gera projeção correta de aportes periódicos
   assert.ok(dca.avgCostUSD > 0);
 });
 
-test('Calculadora de Meta de Lucro - Happy path: U$ 4 por mês ($48/ano)', () => {
+test('Calculadora de Meta de Lucro - Happy path: U$ 4 por mês ($48/ano) com gross-up de 15% de IR', () => {
   const result = calculateTargetProfitScenarios(4, 'month');
   assert.equal(result.annualProfitUSD, 48);
   assert.equal(result.rows.length, 4);
+  assert.equal(result.hypothetical, true);
 
-  // Conservador 5% -> 48 / 0.05 = 960
+  // capital = lucro anual / (taxa x (1 - 15%))
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
   const conservador = result.rows.find(r => r.cenario.includes('Conservador'));
-  assert.equal(conservador.capitalUSD, 960);
-  assert.equal(conservador.rendimentoEstimado, '5% a.a.');
-  assert.equal(conservador.margemSeguranca, 'Alta proteção contra quedas');
+  close(conservador.capitalUSD, 48 / (0.05 * 0.85));
+  assert.equal(conservador.rendimentoEstimado, '5% a.a. (hipotético)');
+  assert.equal(conservador.hipotetico, true);
+  assert.doesNotMatch(conservador.observacao, /Alta proteção/);
 
-  // Moderado 10% -> 48 / 0.10 = 480
   const moderado = result.rows.find(r => r.cenario.includes('Moderado'));
-  assert.equal(moderado.capitalUSD, 480);
-  assert.equal(moderado.rendimentoEstimado, '10% a.a.');
-  assert.equal(moderado.margemSeguranca, 'Média de médio prazo');
+  close(moderado.capitalUSD, 48 / (0.10 * 0.85));
 
-  // Ciclo de Alta 15% -> 48 / 0.15 = 320
   const alta = result.rows.find(r => r.cenario.includes('Ciclo de Alta'));
-  assert.equal(alta.capitalUSD, 320);
-  assert.equal(alta.rendimentoEstimado, '15% a.a.');
-  assert.equal(alta.margemSeguranca, 'Depende de forte valorização');
+  close(alta.capitalUSD, 48 / (0.15 * 0.85));
 
-  // Lending 2% -> 48 / 0.02 = 2400
   const lending = result.rows.find(r => r.cenario.includes('Lending'));
-  assert.equal(lending.capitalUSD, 2400);
-  assert.equal(lending.rendimentoEstimado, '2% a.a.');
-  assert.equal(lending.margemSeguranca, 'Renda passiva (sem vender moedas)');
+  close(lending.capitalUSD, 48 / (0.02 * 0.85));
+  assert.match(lending.observacao, /tributável/);
 });
 
 test('Calculadora de Meta de Lucro - Happy path: U$ 48 por ano direto', () => {
   const result = calculateTargetProfitScenarios(48, 'year');
   assert.equal(result.annualProfitUSD, 48);
   const conservador = result.rows.find(r => r.cenario.includes('Conservador'));
-  assert.equal(conservador.capitalUSD, 960);
+  assert.ok(Math.abs(conservador.capitalUSD - 48 / (0.05 * 0.85)) < 1e-9);
 });
