@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v1.8.0';
+const CACHE_NAME = 'cripto-app-v1.9.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,6 +13,10 @@ const APP_SHELL = [
   './secure-ui.js',
   './secure-ui.css',
   './financ-icons.js',
+  './apoio/apoio.css',
+  './apoio/doacao.js',
+  './apoio/feedback.js',
+  './apoio/qrcode.js',
   './fonts/fonts.css',
   './fonts/ibm-plex-mono-latin-400.woff2',
   './fonts/ibm-plex-mono-latin-500.woff2',
@@ -49,11 +53,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Só cuida do "app shell" (arquivos locais). Chamadas à API de preços (CoinGecko)
-  // continuam indo direto para a rede, nunca para o cache — preço nunca deve ser "antigo".
+  // Só cuida do "app shell" (arquivos locais): preço nunca deve ser "antigo".
+  // Outros domínios (CoinGecko, Binance, Firebase) e envios (POST) vão direto para a rede, sem cache.
   const url = new URL(event.request.url);
-  const isApiCall = url.hostname.includes('coingecko.com');
-  if (isApiCall) return;
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   // Rede primeiro: atualizações valem na hora; o cache só entra quando estiver offline.
   event.respondWith(
