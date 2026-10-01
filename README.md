@@ -1,6 +1,6 @@
 # Cripto — Conversor & Portfólio PWA
 
-> Aplicação web progressiva (PWA) client-side para conversão de moedas, gestão de carteira cripto com auditoria em blockchain local SHA-256, simulador DCA, apuração fiscal (IRPF + DeCripto) e segurança criptográfica avançada com 2FA via certificado de dispositivo.
+> Aplicação web progressiva (PWA) client-side para conversão de moedas, gestão de carteira cripto com auditoria em blockchain local SHA-256, apuração fiscal (IRPF + DeCripto, regimes nacional e exterior) e segurança criptográfica avançada com 2FA via certificado de dispositivo.
 
 ---
 
@@ -39,21 +39,23 @@ A aplicação combina um conversor com cotações em tempo real a um gerenciador
   - Filtro em tempo real por nome/símbolo e personalização de ativos favoritos.
 
 - **Gestão de Portfólio**:
-  - Controle de depósitos em caixa e ordens de compra e venda com registro de taxas de rede/corretagem.
-  - Cálculo automático de preço médio ponderado (PM), saldo em custódia e lucros realizados vs. lucros não realizados (*mark-to-market*).
-
-- **Simulador DCA (Dollar Cost Averaging)**:
-  - Projeção de aportes recorrentes com intervalos customizáveis (diário, semanal, quinzenal, mensal).
-  - Comparativo de rentabilidade entre estratégia DCA e aporte único (*Lump Sum*), considerando ciclos de volatilidade.
+  - Controle de depósitos em caixa e ordens de compra e venda com **taxa da corretora** (% ou USD) e **spread/slippage estimado** (padrão 1%, configurável), já que o preço é a cotação média de mercado. Taxa e spread entram no custo (compra) e reduzem o valor recebido (venda).
+  - Cada operação grava a **cotação USD/BRL do momento**, a origem dessa cotação e o **local de custódia** (exchange nacional ou exterior).
+  - Cálculo automático de preço médio ponderado (PM), saldo em custódia e lucros realizados vs. lucros não realizados (*mark-to-market*). O resumo mostra separadamente o resultado total, o não realizado (com sua porcentagem) e o realizado.
+  - Vender cripto por USDT ou outra stablecoin é permuta tributável, igual a vender por reais.
 
 - **Meta de Lucro & Projeção de Capital**:
-  - Cálculo dinâmico do capital necessário a partir do lucro desejado pelo usuário (mensal ou anual).
-  - Tabela comparativa com colunas focadas: Cenário de Mercado, Rendimento Estimado, Capital em Dólares e Margem de Segurança.
+  - Capital bruto necessário = lucro anual ÷ (rendimento × (1 − 15% de IR)), a partir do lucro desejado (mensal ou anual).
+  - Os rendimentos (2%, 5%, 10%, 15% a.a.) são **hipóteses sem fonte**, não previsão nem promessa de retorno; renda passiva (lending/staking) também é tributável. A tabela não promete proteção contra quedas.
 
 - **Relatório Fiscal IRPF (Brasil - DeCripto)**:
-  - Apuração mensal automática de alienações em Reais (BRL).
-  - Alerta do limite de isenção de **R$ 35.000,00/mês**.
-  - Cálculo de ganho de capital e estimativa de imposto (alíquota base de 15%) sobre operações tributáveis.
+  - Apuração em **R$ histórico**: ganho = alienação (câmbio da data da venda) − custo (câmbios das compras). Operações antigas sem cotação gravada usam a cotação atual e aparecem como **estimadas**; sem nenhuma cotação usa-se R$ 5,50 (contingência, também sinalizada).
+  - **Exchange nacional**: mensal; isenção se as vendas do mês (todas as criptos somadas) forem ≤ R$ 35.000,00 (comparado em centavos); acima disso, ganho tributado em faixas de 15% (até R$ 5 mi), 17,5% (até R$ 10 mi), 20% (até R$ 30 mi) e 22,5% (acima); DARF 4600; DARF abaixo de R$ 10,00 não é recolhido e acumula para o mês seguinte. Postura conservadora: soma dos ganhos positivos, sem compensar prejuízos do mesmo mês (pendente de validação com contador).
+  - **Exterior** (Lei 14.754/2023; IN RFB 2.180/2024, art. 9º): 15% fixo, apuração anual na declaração, sem isenção de R$ 35 mil e sem DARF mensal; perdas compensam no ano e passam aos anos seguintes.
+  - Gatilho DeCripto (IN RFB 2.291/2025) soma compras e vendas do mês. Mês de apuração pelo horário de Brasília.
+  - O câmbio é indicativo, **não a PTAX do Banco Central** (cotação oficial da apuração).
+
+> **Avisos**: simulação educativa, não substitui contador, o GCAP nem a declaração de ajuste anual. Legislação vigente em set/2026; a MP 1.303/2025 caducou, mas o tema pode voltar. Veja `docs/auditoria-financeira-2026-09.md`.
 
 - **Exportação & File System Access**:
   - Salve e sincronize os dados diretamente em um arquivo local do seu computador através da *File System Access API*.
@@ -80,11 +82,13 @@ Para garantir que o histórico de operações financeiras não sofra adulteraç�
 
 ### Apuração Fiscal IRPF (DeCripto)
 
-> A IN RFB 2.291/2025 (DeCripto) substituiu a IN 1888/2019; a declaração mensal vale desde julho de 2026. A tributação não mudou: isenção para vendas até R$ 35 mil/mês e ganho de capital acima disso.
-O cálculo fiscal é executado em `src/finance-engine.js`:
-- Separa compras e vendas por competência mensal (`AAAA-MM`).
-- Converte a alienação para BRL com base na cotação cambial do período.
-- Discrimina vendas isentas de operações sujeitas à apuração de Ganho de Capital.
+> A IN RFB 2.291/2025 (DeCripto) substituiu a IN 1888/2019; a declaração mensal vale desde julho de 2026. Em exchange nacional, isenção para vendas até R$ 35 mil/mês e ganho de capital acima disso; no exterior vale a Lei 14.754/2023.
+
+O cálculo fiscal é executado em `src/finance-engine.js` (`computeTaxReport`), e a interface (`src/js/app.js`) usa exatamente essas funções, de modo que os testes cobrem o que o usuário vê:
+- Separa operações por competência mensal (`AAAA-MM`, fuso America/Sao_Paulo).
+- Converte cada operação para BRL com a cotação gravada na própria operação (custo pelas compras, alienação pela venda).
+- Aplica isenção, faixas e DARF mínimo (nacional) ou apuração anual com compensação de perdas (exterior).
+- Marca como estimado qualquer valor que dependa de cotação não gravada.
 
 ---
 
@@ -108,12 +112,16 @@ cripito-sim/
 │   ├── css/
 │   │   └── style.css          # Estilização responsiva em tema escuro
 │   └── js/
-│       └── app.js             # Lógica de interface, Web Crypto e DOM
+│       └── app.js             # Lógica de interface, Web Crypto e DOM (cálculos vêm do motor)
+├── docs/
+│   └── auditoria-financeira-2026-09.md  # Achados da auditoria e correções
 └── test/
     ├── blockchain.test.js     # Testes de hash SHA-256 e integridade da blockchain
     ├── cert-2fa.test.js       # Compatibilidade de certificados e backups antigos
     ├── security-vault.test.js # Testes do cofre, PIN, migração e adulteração
-    └── financial.test.js      # Testes de caixa, custo médio, IRPF e DCA
+    ├── trade-validation.test.js      # Registro de operações (bloqueios, taxas, câmbio, custódia)
+    ├── auditoria-financeira.test.js  # Regressão da auditoria: câmbio, regimes, faixas, DARF, DeCripto
+    └── financial.test.js      # Testes de caixa, custo médio, IRPF e Meta de Lucro
 ```
 
 ---
@@ -162,8 +170,11 @@ node --test test/*.test.js
    - Saldo de caixa com depósitos, compras e vendas.
    - Preço médio ponderado e lucros realizados/não realizados.
    - Regras de IRPF cripto (isenção até R$ 35k e imposto acima desse teto).
-   - Simulação periódica DCA.
-3. `test/cert-2fa.test.js`:
+   - Meta de Lucro com IR de 15% e rendimentos hipotéticos.
+   - Simulação DCA (função neutra, documentada, sem tela no app).
+3. `test/auditoria-financeira.test.js` e `test/trade-validation.test.js`:
+   - Câmbio histórico, regime exterior, faixas, DARF mínimo, gatilho DeCripto, taxas/spread, fuso de Brasília e migração de dados antigos.
+4. `test/cert-2fa.test.js`:
    - Validação do fluxo 2FA criptográfico com PBKDF2 + AES-GCM.
    - Rejeição de decifragem sem certificado do dispositivo ou com certificado inválido.
 
