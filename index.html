@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.8.0" data-vault-app="cripito-sim" data-vault-name="Cripto">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.9.0" data-vault-app="cripito-sim" data-vault-name="Cripto">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.coingecko.com https://api.binance.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://firestore.googleapis.com https://api.coingecko.com https://api.binance.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'">
 <meta name="referrer" content="no-referrer">
 <title>Cripto — Conversor &amp; Portfólio</title>
 <link rel="manifest" href="manifest.json">
@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="secure-ui.css">
+<link rel="stylesheet" href="apoio/apoio.css" id="dz-style">
 </head>
 <body>
   <div class="modal-overlay" id="securityModalOverlay" style="display:none;">
@@ -339,5 +340,7 @@
 <script src="secure-vault.js"></script>
 <script src="secure-ui.js"></script>
 <script src="js/app.js"></script>
+<script src="apoio/feedback.js"></script>
+<script src="apoio/doacao.js" data-app="CRIPTO" data-flutuante="false"></script>
 </body>
 </html>
