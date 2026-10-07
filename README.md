@@ -102,9 +102,9 @@ cripito-sim/
 │   ├── index.html             # Interface principal da aplicação
 │   ├── cripto-app.html        # Ponto de entrada PWA / standalone
 │   ├── finance-engine.js      # Motor financeiro universal (Node.js & Browser)
-│   ├── secure-vault.js        # Cofre AES-GCM e derivação de chave por PIN
-│   ├── secure-ui.js           # Bloqueio, recuperação e migração segura
-│   ├── secure-ui.css          # Interface de segurança integrada ao tema
+│   ├── stk-pkg-secure-vault.js        # Cofre AES-GCM e derivação de chave por PIN
+│   ├── stk-pkg-secure-ui.js           # Bloqueio, recuperação e migração segura
+│   ├── stk-pkg-secure-ui.css          # Interface de segurança integrada ao tema
 │   ├── manifest.json          # Manifesto PWA com metadados e ícones
 │   ├── sw.js                  # Service Worker com cache e modo offline
 │   ├── icon-192.png           # Ícone PWA (192x192)

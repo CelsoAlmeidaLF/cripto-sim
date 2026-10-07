@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Vault, protect, unprotect, pinOK } = require('../src/secure-vault.js');
+const { Vault, protect, unprotect, pinOK } = require('../src/stk-pkg-secure-vault.js');
 
 class MemoryStorage {
   constructor(initial = {}) { this.data = new Map(Object.entries(initial)); }
