@@ -90,6 +90,14 @@ O cálculo fiscal é executado em `src/finance-engine.js` (`computeTaxReport`), 
 - Aplica isenção, faixas e DARF mínimo (nacional) ou apuração anual com compensação de perdas (exterior).
 - Marca como estimado qualquer valor que dependa de cotação não gravada.
 
+## Apoio, avaliação e log de erros
+
+- `src/apoio/` traz cópias de `PACOTES/stk-pkg-doacao/shared/` (não editar aqui), com id `CRIPTO`.
+- **Menu ⋮ → Apoiar · Avaliar · Sugerir:** doação (Pix e Bitcoin), nota de 1 a 5 e sugestão. Vai para o Firestore `systekna-feedback`, protegido por App Check.
+- **Configurações → Relatórios de erro** (`stk-pkg-erros.js`, primeiro script do `<head>`): guarda no aparelho os últimos erros. Valores, e-mails, textos e parâmetros de URL viram `***` antes de guardar. Dá para ver, copiar, enviar e limpar.
+- **Envio só com permissão:** com o **Modo testador** ligado (vale para todos os apps do aparelho), o app envia sozinho. Desligado, pergunta "Enviar relatório?" uma vez por sessão. O dono lê na aba **Erros** do painel de feedback.
+- Nenhum dado financeiro sai do aparelho. Só a avaliação, a sugestão e o relatório técnico de erro são enviados.
+
 ---
 
 ## Estrutura do Projeto
@@ -105,6 +113,9 @@ cripito-sim/
 │   ├── stk-pkg-secure-vault.js        # Cofre AES-GCM e derivação de chave por PIN
 │   ├── stk-pkg-secure-ui.js           # Bloqueio, recuperação e migração segura
 │   ├── stk-pkg-secure-ui.css          # Interface de segurança integrada ao tema
+│   ├── stk-pkg-financ-icons.js        # Ícones (cópia de PACOTES/stk-pkg-security)
+│   ├── apoio/                 # Painel de apoio e log de erros (cópia de PACOTES/stk-pkg-doacao)
+│   ├── fonts/                 # IBM Plex Mono e Space Grotesk servidas localmente (OFL)
 │   ├── manifest.json          # Manifesto PWA com metadados e ícones
 │   ├── sw.js                  # Service Worker com cache e modo offline
 │   ├── icon-192.png           # Ícone PWA (192x192)
@@ -164,6 +175,8 @@ O projeto utiliza o runner de testes nativo do Node.js (`node:test`), não depen
 # Executar todos os testes da suíte
 node --test test/*.test.js
 ```
+
+Situação em 08/10/2026 (v1.11.1): 109 testes passando.
 
 ### Suítes cobertas:
 1. `test/blockchain.test.js`:
