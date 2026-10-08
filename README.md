@@ -90,6 +90,14 @@ O cálculo fiscal é executado em `src/finance-engine.js` (`computeTaxReport`), 
 - Aplica isenção, faixas e DARF mínimo (nacional) ou apuração anual com compensação de perdas (exterior).
 - Marca como estimado qualquer valor que dependa de cotação não gravada.
 
+## Apoio, avaliação e log de erros
+
+- `src/apoio/` traz cópias de `PACOTES/stk-pkg-doacao/shared/` (não editar aqui), com id `CRIPTO`.
+- **Menu ⋮ → Apoiar · Avaliar · Sugerir:** doação (Pix e Bitcoin), nota de 1 a 5 e sugestão. Vai para o Firestore `systekna-feedback`, protegido por App Check.
+- **Configurações → Relatórios de erro** (`stk-pkg-erros.js`, primeiro script do `<head>`): guarda no aparelho os últimos erros. Valores, e-mails, textos e parâmetros de URL viram `***` antes de guardar. Dá para ver, copiar, enviar e limpar.
+- **Envio só com permissão:** com o **Modo testador** ligado (vale para todos os apps do aparelho), o app envia sozinho. Desligado, pergunta "Enviar relatório?" uma vez por sessão. O dono lê na aba **Erros** do painel de feedback.
+- Nenhum dado financeiro sai do aparelho. Só a avaliação, a sugestão e o relatório técnico de erro são enviados.
+
 ---
 
 ## Estrutura do Projeto
@@ -105,12 +113,15 @@ cripito-sim/
 │   ├── stk-pkg-secure-vault.js        # Cofre AES-GCM e derivação de chave por PIN
 │   ├── stk-pkg-secure-ui.js           # Bloqueio, recuperação e migração segura
 │   ├── stk-pkg-secure-ui.css          # Interface de segurança integrada ao tema
+│   ├── stk-pkg-financ-icons.js        # Ícones (cópia de PACOTES/stk-pkg-security)
+│   ├── apoio/                 # Painel de apoio e log de erros (cópia de PACOTES/stk-pkg-doacao)
+│   ├── fonts/                 # IBM Plex Mono e Space Grotesk servidas localmente (OFL)
 │   ├── manifest.json          # Manifesto PWA com metadados e ícones
 │   ├── sw.js                  # Service Worker com cache e modo offline
 │   ├── icon-192.png           # Ícone PWA (192x192)
 │   ├── icon-512.png           # Ícone PWA (512x512)
 │   ├── css/
-│   │   └── style.css          # Estilização responsiva em tema escuro
+│   │   └── style.css          # Estilização responsiva (formulário em 1 coluna até 520 px)
 │   └── js/
 │       └── app.js             # Lógica de interface, Web Crypto e DOM (cálculos vêm do motor)
 ├── docs/
@@ -120,6 +131,10 @@ cripito-sim/
     ├── cert-2fa.test.js       # Compatibilidade de certificados e backups antigos
     ├── security-vault.test.js # Testes do cofre, PIN, migração e adulteração
     ├── trade-validation.test.js      # Registro de operações (bloqueios, taxas, câmbio, custódia)
+    ├── layout-mobile.test.js         # Formulário de operação no celular (taxa, spread, versão)
+    ├── apoio.test.js          # Painel Apoiar · Avaliar · Sugerir (CSP, Firebase, App Check)
+    ├── financ-id.test.js      # PIN e certificado compartilhados entre os apps
+    ├── stk-pkg-erros.test.js  # Log de erros: limpeza de dados sensíveis antes do envio
     ├── auditoria-financeira.test.js  # Regressão da auditoria: câmbio, regimes, faixas, DARF, DeCripto
     └── financial.test.js      # Testes de caixa, custo médio, IRPF e Meta de Lucro
 ```
@@ -161,6 +176,8 @@ O projeto utiliza o runner de testes nativo do Node.js (`node:test`), não depen
 node --test test/*.test.js
 ```
 
+Situação em 08/10/2026 (v1.11.1): 109 testes passando.
+
 ### Suítes cobertas:
 1. `test/blockchain.test.js`:
    - Consistência dos hashes SHA-256 puros.
@@ -177,6 +194,10 @@ node --test test/*.test.js
 4. `test/cert-2fa.test.js`:
    - Validação do fluxo 2FA criptográfico com PBKDF2 + AES-GCM.
    - Rejeição de decifragem sem certificado do dispositivo ou com certificado inválido.
+5. `test/layout-mobile.test.js`:
+   - Formulário "Registrar operação" com uma coluna em telas até 520 px.
+   - Linha da taxa (`.fee-row`) sem estilo inline, com o seletor %/USD de 88 px e o Spread em linha própria.
+   - `cripto-app.html` com o mesmo formulário do `index.html`, e a mesma versão no HTML e no cache do service worker.
 
 ---
 
