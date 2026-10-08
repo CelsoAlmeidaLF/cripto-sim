@@ -123,4 +123,4 @@ Preço médio ponderado; isenção inclusiva ≤ R$ 35.000 tudo-ou-nada somando 
 ## Outros
 - Versão 1.8.0 (`data-vault-version` e cache do service worker `cripto-app-v1.8.0`).
 - CSV do extrato ganhou colunas: taxa+spread, câmbio USD/BRL, origem do câmbio e custódia.
-- Não alterados: `../.security/`, `../.documents/`, arquivos `secure-*`.
+- Não alterados: `../stk-pkg-security/`, `../.documents/`, arquivos `secure-*`.

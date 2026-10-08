@@ -246,6 +246,6 @@
   }
   .tab-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 
-  /* Ícones SVG (financ-icons.js) */
+  /* Ícones SVG (stk-pkg-financ-icons.js) */
   .icon-btn, .io-btn, .modal-close, .fab, .del, .alert-banner button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }

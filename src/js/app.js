@@ -140,45 +140,49 @@
       <div class="status" id="certStatus" style="margin-top:12px;"></div>
     `;
 
-    document.getElementById('downloadCertBtn').addEventListener('click', async () => {
-      try { if (FinancCert.linked) await FinancCert.export(); else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
-      catch (_) { document.getElementById('certStatus').textContent = 'Não foi possível exportar o certificado protegido.'; }
-    });
-
-    document.getElementById('uploadCertBtn').addEventListener('click', () => {
-      document.getElementById('importCertFileInput').click();
-    });
-
-    document.getElementById('importCertFileInput').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const payload = JSON.parse(reader.result);
-          const importedCert = FinancCert.linked ? await FinancCert.importFile(payload) : await window.importCertificate(payload, 'cripito-sim:certificate');
-          if (importedCert && importedCert.id && importedCert.secret) {
-            if (!FinancCert.linked) localStorage.setItem(DEVICE_CERT_KEY, JSON.stringify(importedCert));
-            await renderCertModal();
-            document.getElementById('certStatus').textContent = `Certificado "${importedCert.id}" ativado com sucesso neste aparelho!`;
-          } else {
-            document.getElementById('certStatus').textContent = 'Arquivo de certificado inválido.';
+    const UiEventsCert = {
+      downloadCertBtn_click: async () => {
+        try { if (FinancCert.linked) await FinancCert.export(); else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
+        catch (_) { document.getElementById('certStatus').textContent = 'Não foi possível exportar o certificado protegido.'; }
+      },
+      uploadCertBtn_click: () => {
+        document.getElementById('importCertFileInput').click();
+      },
+      importCertFileInput_change: (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const payload = JSON.parse(reader.result);
+            const importedCert = FinancCert.linked ? await FinancCert.importFile(payload) : await window.importCertificate(payload, 'cripito-sim:certificate');
+            if (importedCert && importedCert.id && importedCert.secret) {
+              if (!FinancCert.linked) localStorage.setItem(DEVICE_CERT_KEY, JSON.stringify(importedCert));
+              await renderCertModal();
+              document.getElementById('certStatus').textContent = `Certificado "${importedCert.id}" ativado com sucesso neste aparelho!`;
+            } else {
+              document.getElementById('certStatus').textContent = 'Arquivo de certificado inválido.';
+            }
+          } catch (err) {
+            document.getElementById('certStatus').textContent = 'Erro ao ler o arquivo de certificado.';
           }
-        } catch (err) {
-          document.getElementById('certStatus').textContent = 'Erro ao ler o arquivo de certificado.';
-        }
-      };
-      reader.readAsText(file);
-      e.target.value = '';
-    });
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      },
+      regenCertBtn_click: async () => {
+        if (!confirm(FinancCert.linked ? 'Gerar um novo certificado? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
+        if (FinancCert.linked) await FinancCert.regenerate();
+        else { localStorage.removeItem(DEVICE_CERT_KEY); await ensureDeviceCert(); }
+        await renderCertModal();
+        document.getElementById('certStatus').textContent = 'Novo certificado digital gerado com sucesso.';
+      }
+    };
 
-    document.getElementById('regenCertBtn').addEventListener('click', async () => {
-      if (!confirm(FinancCert.linked ? 'Gerar um novo certificado? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
-      if (FinancCert.linked) await FinancCert.regenerate();
-      else { localStorage.removeItem(DEVICE_CERT_KEY); await ensureDeviceCert(); }
-      await renderCertModal();
-      document.getElementById('certStatus').textContent = 'Novo certificado digital gerado com sucesso.';
-    });
+    document.getElementById('downloadCertBtn').addEventListener('click', UiEventsCert.downloadCertBtn_click);
+    document.getElementById('uploadCertBtn').addEventListener('click', UiEventsCert.uploadCertBtn_click);
+    document.getElementById('importCertFileInput').addEventListener('change', UiEventsCert.importCertFileInput_change);
+    document.getElementById('regenCertBtn').addEventListener('click', UiEventsCert.regenCertBtn_click);
   }
 
   async function openCertModal() {
