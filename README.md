@@ -110,7 +110,7 @@ cripito-sim/
 │   ├── icon-192.png           # Ícone PWA (192x192)
 │   ├── icon-512.png           # Ícone PWA (512x512)
 │   ├── css/
-│   │   └── style.css          # Estilização responsiva em tema escuro
+│   │   └── style.css          # Estilização responsiva (formulário em 1 coluna até 520 px)
 │   └── js/
 │       └── app.js             # Lógica de interface, Web Crypto e DOM (cálculos vêm do motor)
 ├── docs/
@@ -120,6 +120,10 @@ cripito-sim/
     ├── cert-2fa.test.js       # Compatibilidade de certificados e backups antigos
     ├── security-vault.test.js # Testes do cofre, PIN, migração e adulteração
     ├── trade-validation.test.js      # Registro de operações (bloqueios, taxas, câmbio, custódia)
+    ├── layout-mobile.test.js         # Formulário de operação no celular (taxa, spread, versão)
+    ├── apoio.test.js          # Painel Apoiar · Avaliar · Sugerir (CSP, Firebase, App Check)
+    ├── financ-id.test.js      # PIN e certificado compartilhados entre os apps
+    ├── stk-pkg-erros.test.js  # Log de erros: limpeza de dados sensíveis antes do envio
     ├── auditoria-financeira.test.js  # Regressão da auditoria: câmbio, regimes, faixas, DARF, DeCripto
     └── financial.test.js      # Testes de caixa, custo médio, IRPF e Meta de Lucro
 ```
@@ -177,6 +181,10 @@ node --test test/*.test.js
 4. `test/cert-2fa.test.js`:
    - Validação do fluxo 2FA criptográfico com PBKDF2 + AES-GCM.
    - Rejeição de decifragem sem certificado do dispositivo ou com certificado inválido.
+5. `test/layout-mobile.test.js`:
+   - Formulário "Registrar operação" com uma coluna em telas até 520 px.
+   - Linha da taxa (`.fee-row`) sem estilo inline, com o seletor %/USD de 88 px e o Spread em linha própria.
+   - `cripto-app.html` com o mesmo formulário do `index.html`, e a mesma versão no HTML e no cache do service worker.
 
 ---
 
