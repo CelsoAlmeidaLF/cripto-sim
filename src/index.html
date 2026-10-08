@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.11.0" data-vault-app="cripito-sim" data-vault-name="Cripto">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.11.1" data-vault-app="cripito-sim" data-vault-name="Cripto">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -213,9 +213,9 @@
             </div>
             <div>
               <label for="feeInput">Taxa da corretora</label>
-              <div style="display:flex; gap:6px;">
-                <input type="number" id="feeInput" step="any" min="0" placeholder="0" style="flex:1; min-width:0;">
-                <select id="feeUnitSelect" aria-label="Unidade da taxa" style="flex:0 0 auto; width:auto;">
+              <div class="fee-row">
+                <input type="number" id="feeInput" step="any" min="0" placeholder="0">
+                <select id="feeUnitSelect" aria-label="Unidade da taxa">
                   <option value="pct">%</option>
                   <option value="usd">USD</option>
                 </select>
