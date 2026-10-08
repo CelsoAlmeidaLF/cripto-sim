@@ -116,8 +116,13 @@
   .icon-btn { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 10px 12px; cursor: pointer; white-space: nowrap; }
   .icon-btn:hover { border-color: var(--accent-dim); }
 
-  form.trade-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  form.trade-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
   form.trade-form .full { grid-column: 1 / -1; }
+  /* celular: uma coluna, para a taxa e o spread não ficarem espremidos */
+  @media (max-width: 520px) { form.trade-form { grid-template-columns: minmax(0, 1fr); } }
+  .fee-row { display: flex; gap: 6px; }
+  .fee-row input { flex: 1; min-width: 0; }
+  .fee-row select { flex: 0 0 88px; width: 88px; }
   label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-dim); display: block; margin-bottom: 5px; }
   .type-toggle { display: flex; gap: 8px; }
   .type-toggle button { flex: 1; padding: 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; font-size: 13px; cursor: pointer; }
