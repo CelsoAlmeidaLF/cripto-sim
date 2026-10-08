@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="vault-locked" data-vault-version="1.10.0" data-vault-app="cripito-sim" data-vault-name="Cripto">
+<html lang="pt-BR" class="vault-locked" data-vault-version="1.11.0" data-vault-app="cripito-sim" data-vault-name="Cripto">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -14,6 +14,8 @@
 <meta name="apple-mobile-web-app-title" content="Cripto">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<!-- Log de erros: primeiro script, para pegar erros desde o início -->
+<script src="apoio/stk-pkg-erros.js" data-app="CRIPTO"></script>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="stk-pkg-secure-ui.css">
@@ -150,7 +152,7 @@
         </div>
         <div class="card">
           <div style="display:flex; gap:10px;">
-            <input type="number" id="depositInput" placeholder="Valor (USD)" step="any" style="flex:1;">
+            <input type="number" id="depositInput" placeholder="Valor (USD)" step="any" style="flex:1; min-width:0;">
             <button class="io-btn" id="depositBtn" style="flex:0 0 auto; min-width:auto; padding:10px 16px;">Adicionar saldo</button>
           </div>
           <div id="depositList"></div>
@@ -213,7 +215,7 @@
               <label for="feeInput">Taxa da corretora</label>
               <div style="display:flex; gap:6px;">
                 <input type="number" id="feeInput" step="any" min="0" placeholder="0" style="flex:1; min-width:0;">
-                <select id="feeUnitSelect" aria-label="Unidade da taxa" style="flex:0 0 auto;">
+                <select id="feeUnitSelect" aria-label="Unidade da taxa" style="flex:0 0 auto; width:auto;">
                   <option value="pct">%</option>
                   <option value="usd">USD</option>
                 </select>
