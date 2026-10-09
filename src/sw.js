@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v1.14.0';
+const CACHE_NAME = 'cripto-app-v1.15.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,7 +9,7 @@ const APP_SHELL = [
   './css/style.css',
   './js/app.js',
   './finance-engine.js',
-  './stk-pkg-secure-vault.js',
+  './stk-pkg-bip39-pt.js', './stk-pkg-secure-vault.js',
   './stk-pkg-secure-ui.js',
   './stk-pkg-secure-ui.css',
   './stk-pkg-financ-icons.js',

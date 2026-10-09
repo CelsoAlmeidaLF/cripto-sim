@@ -77,11 +77,10 @@ test('biometria embrulha a chave e só abre com o segredo PRF correto', async ()
   await vault.unlock('123456');
 });
 
-test('biometria continua válida após redefinir o PIN pelo código de recuperação', async () => {
+test('biometria continua válida após redefinir o PIN pelas 12 palavras', async () => {
   const storage = new MemoryStorage();
   const vault = new Vault(storage, 'cambio-sim');
-  const recovery = '00112233-44556677-8899aabb-ccddeeff-00112233-44556677-8899aabb-ccddeeff';
-  await vault.create('123456', { cambio_log: 'x' }, recovery);
+  const recovery = (await vault.create('123456', { cambio_log: 'x' })).words.join(' ');
   const prf = crypto.getRandomValues(new Uint8Array(32));
   await vault.enableBiometric('123456', 'cred', 'salt', prf);
   await vault.lock();
@@ -111,17 +110,16 @@ test('alterar PIN exige o PIN atual e mantém dados e biometria', async () => {
   await vault.unlockBiometric(prf);
 });
 
-test('novo código de recuperação invalida o anterior', async () => {
+test('novas 12 palavras invalidam as anteriores', async () => {
   const storage = new MemoryStorage();
   const vault = new Vault(storage, 'taxometro');
-  const old = '00112233-44556677-8899aabb-ccddeeff-00112233-44556677-8899aabb-ccddeeff';
-  await vault.create('123456', {}, old);
+  const old = (await vault.create('123456', {})).words.join(' ');
   await assert.rejects(vault.rotateRecovery('000000'));
   const fresh = await vault.rotateRecovery('123456');
-  assert.match(fresh, /^[0-9a-f]{8}(-[0-9a-f]{8}){7}$/);
+  assert.equal(fresh.words.length, 12);
   await vault.lock();
   await assert.rejects(vault.resetPassword(old, '333333'));
-  await vault.resetPassword(fresh, '333333');
+  await vault.resetPassword(fresh.words.join(' '), '333333');
   await vault.lock();
   await vault.unlock('333333');
 });
@@ -147,18 +145,14 @@ test('preferências são cifradas, validadas e sobrevivem ao bloqueio', async ()
   assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: false });
 });
 
-test('código de recuperação usado deixa de valer após redefinir o PIN', async () => {
+test('as 12 palavras continuam valendo depois de redefinir o PIN', async () => {
   const storage = new MemoryStorage();
   const vault = new Vault(storage, 'gerenc-fin');
-  const first = '00112233-44556677-8899aabb-ccddeeff-00112233-44556677-8899aabb-ccddeeff';
-  await vault.create('123456', {}, first);
+  const { words, hash } = await vault.create('123456', {});
   await vault.lock();
-  const { recovery: second } = await vault.resetPassword(first, '222222');
-  assert.match(second, /^[0-9a-f]{8}(-[0-9a-f]{8}){7}$/);
-  assert.notEqual(second, first);
+  assert.deepEqual(await vault.resetPassword(words.join(' '), '222222'), {});
   await vault.lock();
-  await assert.rejects(vault.resetPassword(first, '333333'));
-  await vault.resetPassword(second, '333333');
+  await vault.resetPassword(hash, '333333');
   await vault.lock();
   await vault.unlock('333333');
 });

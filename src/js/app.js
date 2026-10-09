@@ -6,7 +6,7 @@
   function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function renderSecuritySection() {
     const el = document.getElementById('securityContent');
-    el.innerHTML = '<p>Seus dados locais são criptografados. Abra com o PIN de 6 números ou com a biometria do aparelho. Guarde o código de recuperação fornecido na configuração.</p><button class="icon-btn" id="bioSettingsBtn">' + FinancIcons.svg('settings', { size: 15 }) + ' Configurações de segurança</button><button class="icon-btn" id="manageCertBtn">' + FinancIcons.svg('shield', { size: 15 }) + ' Gerenciar certificado</button><button class="icon-btn" id="lockNowBtn">' + FinancIcons.svg('lock', { size: 15 }) + ' Bloquear agora</button>';
+    el.innerHTML = '<p>Seus dados locais são criptografados. Abra com o PIN de 6 números ou com a biometria do aparelho. Guarde as 12 palavras mostradas na configuração: elas recuperam o PIN e abrem seus backups.</p><button class="icon-btn" id="bioSettingsBtn">' + FinancIcons.svg('settings', { size: 15 }) + ' Configurações de segurança</button><button class="icon-btn" id="manageCertBtn">' + FinancIcons.svg('shield', { size: 15 }) + ' Gerenciar certificado</button><button class="icon-btn" id="lockNowBtn">' + FinancIcons.svg('lock', { size: 15 }) + ' Bloquear agora</button>';
     document.getElementById('bioSettingsBtn').onclick = () => { closeSecurityModal(); window.vaultSettings(); };
     document.getElementById('manageCertBtn').onclick = () => { closeSecurityModal(); openCertModal(); };
     document.getElementById('lockNowBtn').onclick = window.lockVault;
@@ -336,7 +336,7 @@
   /* ============ AJUSTES ============ */
   const clickById = id => () => document.getElementById(id).click();
   FinancSettings.addSection({ title: 'Dados e backup', rows: [
-    { icon: 'download', label: 'Exportar backup (JSON)', description: 'Arquivo criptografado com PIN próprio.', onClick: clickById('exportBtn') },
+    { icon: 'download', label: 'Exportar backup (JSON)', description: 'Protegido pelas suas 12 palavras: abre em qualquer aparelho com elas.', onClick: clickById('exportBtn') },
     { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
     { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
     { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
@@ -1358,30 +1358,16 @@
       alert('Criptografia indisponível neste navegador ou contexto não seguro (precisa de HTTPS ou localhost). Operação cancelada para proteger seus dados.');
       return;
     }
-    const password = await window.askSecret('Crie uma senha para o backup (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
-    if (!password) {
-      document.getElementById('ioStatus').textContent = 'exportação cancelada: a senha é obrigatória para criptografar todos os dados';
-      return;
-    }
+    // Com as 12 palavras: sem senha, abre em qualquer aparelho com elas (app ainda com PIN próprio: pede senha).
     const data = { chain, deposits, netWorthHistory, alerts, settings };
-    let payload;
     try {
       document.getElementById('ioStatus').textContent = 'criptografando dados com AES-256-GCM…';
-      payload = await encryptJSON(data, password);
+      await window.exportProtected(data, 'cripito-sim:backup', `portfolio-${currentPortfolioId}-${new Date().toISOString().slice(0,10)}.json`);
     } catch (e) {
       document.getElementById('ioStatus').textContent = 'erro ao criptografar: ' + (e.message || e);
       return;
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `portfolio-${currentPortfolioId}-${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    document.getElementById('ioStatus').textContent = 'arquivo exportado com 100% dos dados criptografados (AES-256)';
+    document.getElementById('ioStatus').textContent = 'backup exportado com 100% dos dados criptografados (AES-256)';
   });
   document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
   document.getElementById('importFile').addEventListener('change', (e) => {
@@ -1393,7 +1379,11 @@
         let imported = JSON.parse(reader.result);
         // Backups antigos usam 150 mil iterações: abrem, mas vale exportar um novo (600 mil e senha longa).
         const weakBackup = Boolean(imported && imported.encrypted && Number(imported.iterations ?? 150000) < 600000);
-        if (imported && imported.encrypted) {
+        if (imported && (imported.format === FinancVault.seed.BACKUP_FORMAT || imported.format === 'financ-encrypted-v1')) {
+          try { imported = await window.importProtected(imported, 'cripito-sim:backup'); }
+          catch (e) { document.getElementById('ioStatus').textContent = e.message || 'não foi possível abrir o backup'; return; }
+          if (imported === null) { document.getElementById('ioStatus').textContent = 'importação cancelada'; return; }
+        } else if (imported && imported.encrypted) {
           const password = await window.askSecret('Senha do backup (arquivos antigos podem usar PIN):', false, true);
           if (password === null) return;
           try {
