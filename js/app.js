@@ -143,8 +143,8 @@
     const UiEventsCert = {
       downloadCertBtn_click: async () => {
         try {
-          if (FinancCert.linked) { if (await FinancCert.export()) document.getElementById('certStatus').textContent = FinancCert.fromSeed ? 'Certificado baixado, protegido pelas 12 palavras.' : 'Certificado baixado.'; }
-          else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`);
+          // Só o PIN, nunca senha: o arquivo sai protegido pelas 12 palavras.
+          if (await FinancCert.export()) document.getElementById('certStatus').textContent = 'Certificado baixado, protegido pelas 12 palavras.';
         }
         catch (err) { document.getElementById('certStatus').textContent = (err && err.message) || 'Não foi possível exportar o certificado protegido.'; }
       },
@@ -174,7 +174,7 @@
         e.target.value = '';
       },
       regenCertBtn_click: async () => {
-        if (FinancCert.fromSeed) {
+        if (FinancCert.fromSeed || FinancCert.linked) {
           try {
             const made = await FinancCert.regenerate();
             if (!made) return;
