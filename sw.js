@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v1.15.1';
+const CACHE_NAME = 'cripto-app-v1.15.2';
 const APP_SHELL = [
   './',
   './index.html',
