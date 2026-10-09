@@ -75,10 +75,10 @@ Para garantir que o histórico de operações financeiras não sofra adulteraç�
 - **PIN numérico**: o acesso exige exatamente seis números; tentativas incorretas recebem atraso progressivo.
 - **Criptografia integral**: carteiras, operações, depósitos, histórico, alertas e configurações ficam em um único cofre AES-256-GCM autenticado.
 - **Derivação de chave**: PBKDF2-SHA-256 com 600.000 iterações e salt aleatório protege a chave de dados; a chave aberta existe apenas na memória da sessão.
-- **Recuperação**: um código aleatório, exibido uma única vez, permite definir outro PIN sem manter o PIN original.
+- **12 palavras**: ao criar o PIN o app mostra 12 palavras (BIP39 em português) e um código de 12 caracteres equivalente, com PDF para imprimir. Elas redefinem o PIN de todos os apps e continuam as mesmas depois disso; dá para vê-las de novo em Configurações (pede o PIN). Quem tinha o código antigo de 8 blocos recebe as palavras na primeira abertura.
 - **Bloqueio de sessão**: o cofre bloqueia após 15 minutos sem atividade e impede duas abas de editarem os mesmos dados ao mesmo tempo.
 - **Migração segura**: registros antigos só são removidos depois que a gravação criptografada é confirmada.
-- **Certificados e backups**: certificados, backups JSON e extratos exportados exigem PIN e usam AES-256-GCM; formatos antigos continuam importáveis para migração.
+- **Certificado e backups**: o certificado sai das 12 palavras (o mesmo em qualquer aparelho). O backup JSON é cifrado com a raiz das palavras + o certificado, sem senha extra: abre direto neste aparelho e, em outro, com as 12 palavras ou o código. Certificado exportado e extratos usam senha longa; formatos antigos continuam importáveis.
 
 ### Apuração Fiscal IRPF (DeCripto)
 
