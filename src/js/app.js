@@ -119,9 +119,9 @@
     const el = document.getElementById('certModalContent');
     el.innerHTML = `
       <div style="font-size:13.5px; line-height:1.6; color:var(--ink); margin-bottom:14px;">
-        ${FinancCert.linked ? 'Este aparelho usa um <strong>certificado digital único</strong>, o mesmo em todos os apps.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.'}
-        Se alguém descobrir seu PIN ou senha, <strong>ainda assim NÃO conseguirá abrir seu arquivo JSON</strong>
-        em outro computador ou celular sem importar este arquivo de certificado antes.
+        ${FinancCert.fromSeed ? 'O certificado sai das suas <strong>12 palavras</strong>: é o mesmo em qualquer aparelho onde você usar as mesmas palavras. Em outro celular, basta digitar as 12 palavras para abrir seus backups; gerar ou baixar o certificado pede só o PIN.'
+          : (FinancCert.linked ? 'Este aparelho usa um <strong>certificado digital único</strong>, o mesmo em todos os apps.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.')
+            + ' Se alguém descobrir seu PIN ou senha, <strong>ainda assim NÃO conseguirá abrir seu arquivo JSON</strong> em outro computador ou celular sem importar este arquivo de certificado antes.'}
       </div>
 
       <div class="card" style="margin-bottom:14px; background:var(--surface-2);">
@@ -135,15 +135,18 @@
         <button class="submit-btn" id="downloadCertBtn" type="button">Baixar Certificado (.cert.json)</button>
         <button class="icon-btn" id="uploadCertBtn" type="button" style="padding:11px;">Importar Certificado de Outro Aparelho</button>
         <input type="file" id="importCertFileInput" accept="application/json" style="display:none;">
-        <button class="icon-btn" id="regenCertBtn" type="button" style="color:var(--down); padding:11px;">Gerar Novo Certificado</button>
+        <button class="icon-btn" id="regenCertBtn" type="button" style="${FinancCert.fromSeed ? '' : 'color:var(--down); '}padding:11px;">${FinancCert.fromSeed ? 'Gerar certificado das 12 palavras' : 'Gerar Novo Certificado'}</button>
       </div>
       <div class="status" id="certStatus" style="margin-top:12px;"></div>
     `;
 
     const UiEventsCert = {
       downloadCertBtn_click: async () => {
-        try { if (FinancCert.linked) await FinancCert.export(); else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`); }
-        catch (_) { document.getElementById('certStatus').textContent = 'Não foi possível exportar o certificado protegido.'; }
+        try {
+          if (FinancCert.linked) { if (await FinancCert.export()) document.getElementById('certStatus').textContent = FinancCert.fromSeed ? 'Certificado baixado, protegido pelas 12 palavras.' : 'Certificado baixado.'; }
+          else await window.exportProtected(cert, 'cripito-sim:certificate', `cripto-device-${cert.id}.cert.secure.json`);
+        }
+        catch (err) { document.getElementById('certStatus').textContent = (err && err.message) || 'Não foi possível exportar o certificado protegido.'; }
       },
       uploadCertBtn_click: () => {
         document.getElementById('importCertFileInput').click();
@@ -171,6 +174,15 @@
         e.target.value = '';
       },
       regenCertBtn_click: async () => {
+        if (FinancCert.fromSeed) {
+          try {
+            const made = await FinancCert.regenerate();
+            if (!made) return;
+            await renderCertModal();
+            document.getElementById('certStatus').textContent = `Certificado "${made.id}" gerado a partir das 12 palavras.`;
+          } catch (err) { document.getElementById('certStatus').textContent = (err && err.message) || 'Não foi possível gerar o certificado.'; }
+          return;
+        }
         if (!confirm(FinancCert.linked ? 'Gerar um novo certificado? Ele passa a valer para os backups novos de todos os apps; o anterior continua guardado para abrir os backups antigos.' : 'Atenção: Gerar um novo certificado fará com que este celular não consiga abrir arquivos JSON anteriores a menos que você tenha guardado o certificado antigo. Deseja continuar?')) return;
         if (FinancCert.linked) await FinancCert.regenerate();
         else { localStorage.removeItem(DEVICE_CERT_KEY); await ensureDeviceCert(); }
@@ -340,7 +352,7 @@
     { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
     { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
     { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
-    { icon: 'shield', label: 'Certificado digital', description: 'Segunda chave dos backups, a mesma em todos os apps.', onClick: () => openCertModal() },
+    { icon: 'shield', label: 'Certificado digital', description: 'Sai das 12 palavras; gerar e baixar pedem só o PIN.', onClick: () => openCertModal() },
     { icon: 'file-text', label: 'Relatório fiscal e IRPF', description: 'Alienações mensais e ganho de capital.', onClick: clickById('openTaxModalBtn') },
   ] });
 
