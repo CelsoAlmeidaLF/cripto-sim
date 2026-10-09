@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cripto-app-v1.15.2';
+const CACHE_NAME = 'cripto-app-v1.15.3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -61,7 +61,7 @@ self.addEventListener('fetch', (event) => {
 
   // Rede primeiro: atualizações valem na hora; o cache só entra quando estiver offline.
   event.respondWith(
-    fetch(event.request).then((response) => {
+    fetch(event.request, { cache: 'no-cache' }).then((response) => {
       if (response && response.status === 200 && event.request.method === 'GET') {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
