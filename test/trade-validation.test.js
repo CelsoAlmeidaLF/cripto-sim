@@ -9,7 +9,7 @@ const source = readFileSync(require.resolve('../src/js/app.js'), 'utf8');
 const balances = source.slice(source.indexOf('  function computeCashBalance()'), source.indexOf('  function computeRunningBalances()'));
 const submit = source.slice(source.indexOf("  document.getElementById('tradeForm').addEventListener('submit'"), source.indexOf("  document.getElementById('verifyChainBtn').addEventListener"));
 
-function setup({ trades = [], deposits = [], value = 100, asset = 'btc', type = 'sell', blockOverdraft = false, price = 50000, fee = '', feeUnit = 'pct', spread, custody = 'national', brlPerUsd = null } = {}) {
+function setup({ trades = [], deposits = [], value = 100, asset = 'btc', type = 'sell', blockOverdraft = false, price = 50000, fee = '', feeUnit = 'pct', spread, custody = 'national', brlPerUsd = null, saveOk = true } = {}) {
   let onSubmit;
   const elements = {
     tradeForm: { addEventListener: (_, listener) => { onSubmit = listener; } },
@@ -26,6 +26,7 @@ function setup({ trades = [], deposits = [], value = 100, asset = 'btc', type = 
   const chain = [engine.makeGenesisBlock(1)];
   for (const trade of trades) engine.appendBlock(chain, { kind: 'trade', ...trade });
   let saves = 0;
+  const notices = [];
   const context = vm.createContext({
     document: { getElementById: id => elements[id] },
     FinanceEngine: engine,
@@ -33,12 +34,13 @@ function setup({ trades = [], deposits = [], value = 100, asset = 'btc', type = 
     usdPrice: { btc: price, eth: 2000, brl: brlPerUsd ? 1 / brlPerUsd : null }, currentType: type,
     settings: { blockOverdraft, custody: 'national', spreadPct: 1 },
     appendBlock: async (...args) => engine.appendBlock(...args),
-    saveChain: () => { saves++; },
+    saveChain: async () => { saves++; return saveOk; },
+    showNotice: (id, text) => { notices.push({ id, text }); },
     chainToTrades: () => chain.filter(b => b.data).map(b => b.data),
     renderSimulator: () => {}
   });
   vm.runInContext(balances + submit, context);
-  return { context, elements, chain, submit: () => onSubmit({ preventDefault() {} }), saves: () => saves };
+  return { context, elements, chain, notices, submit: () => onSubmit({ preventDefault() {} }), saves: () => saves };
 }
 
 const buy = (qty, asset = 'btc') => ({ type: 'buy', asset, qty, price: 50000, value: qty * 50000, timestamp: 10 });
@@ -164,4 +166,24 @@ test('Configurações antigas ganham custódia e spread padrão (migração)', (
   assert.equal(ctx.n(null).spreadPct, 1);
   assert.equal(ctx.n({ custody: 'foreign', spreadPct: 2.5 }).custody, 'foreign');
   assert.equal(ctx.n({ spreadPct: -3 }).spreadPct, 1);
+});
+
+/* ---- Item 1: gravação que falha não pode ficar como salva ---- */
+test('Falha ao gravar a operação: reverte a memória, avisa e não limpa o formulário', async () => {
+  const app = setup({ type: 'buy', value: 100, deposits: [{ amount: 500 }], saveOk: false });
+  const before = JSON.stringify(app.chain);
+  await app.submit();
+  assert.equal(JSON.stringify(app.chain), before, 'o bloco recusado sai da cadeia em memória');
+  assert.equal(vm.runInContext('trades.length', app.context), 0);
+  assert.deepEqual(app.notices, [{ id: 'save-chain', text: 'Não foi possível salvar a operação. Ela não foi gravada; tente de novo ou faça um backup.' }]);
+  assert.equal(app.elements.valueInput.value, '100');
+  assert.equal(app.elements.submitBtn.disabled, false);
+  assert.equal(app.elements.submitBtn.textContent, 'Registrar compra');
+});
+
+test('Gravação bem-sucedida não gera aviso', async () => {
+  const app = setup({ type: 'buy', value: 100, deposits: [{ amount: 500 }] });
+  await app.submit();
+  assert.equal(app.notices.length, 0);
+  assert.equal(app.chain.length, 2);
 });

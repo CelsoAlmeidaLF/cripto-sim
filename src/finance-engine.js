@@ -499,6 +499,116 @@
   }
 
   // ==========================================
+  // DOMAIN SERVICE: regras de operação (tela e importação usam a mesma função)
+  // ==========================================
+  class TradeRulesService {
+    static isPositive(n) { return typeof n === 'number' && Number.isFinite(n) && n > 0; }
+    static isNonNegativeOrAbsent(n) { return n == null || (typeof n === 'number' && Number.isFinite(n) && n >= 0); }
+
+    /**
+     * Valida uma operação de compra/venda.
+     * op: { asset, type, value, price, qty, feeUSD, spreadUSD } (números já resolvidos; qty é opcional e, se vier,
+     *     precisa ser positiva).
+     * ctx: { assetKeys, availableQty } — availableQty é a custódia do ativo ANTES desta operação (só vale para venda).
+     * Retorna { ok:true, qty } (qty já limitada à custódia quando a diferença é só arredondamento)
+     *      ou { ok:false, code, reason, message } com message = 'operação bloqueada: ' + reason.
+     */
+    static validateTrade(op, ctx = {}) {
+      const fail = (code, reason) => ({ ok: false, code, reason, message: 'operação bloqueada: ' + reason });
+      const assetKeys = Array.isArray(ctx.assetKeys) ? ctx.assetKeys : [];
+      if (!op || typeof op !== 'object') return fail('invalid_operation', 'operação ausente ou em formato inválido');
+      if (op.type !== 'buy' && op.type !== 'sell') return fail('invalid_type', 'tipo da operação deve ser compra ou venda');
+      if (!assetKeys.includes(op.asset)) return fail('unknown_asset', `ativo desconhecido (${String(op.asset).slice(0, 20)})`);
+      const { isPositive } = TradeRulesService;
+      if (!isPositive(op.value) || !isPositive(op.price) || (op.qty != null && !isPositive(op.qty))) {
+        return fail('invalid_number', 'valor, preço e quantidade precisam ser números positivos');
+      }
+      if (!TradeRulesService.isNonNegativeOrAbsent(op.feeUSD) || !TradeRulesService.isNonNegativeOrAbsent(op.spreadUSD)) {
+        return fail('invalid_costs', 'taxa e spread precisam ser números iguais ou maiores que zero');
+      }
+      const qty = op.qty != null ? op.qty : op.value / op.price;
+      if (!isPositive(qty)) return fail('invalid_number', 'valor, preço e quantidade precisam ser números positivos');
+      let finalQty = qty;
+      if (op.type === 'sell') {
+        const available = Number(ctx.availableQty);
+        if (!Number.isFinite(available) || available <= 0) {
+          return fail('no_custody', 'não há saldo deste ativo em custódia para venda');
+        }
+        // Tolera apenas o arredondamento numérico ao vender toda a posição.
+        const tolerance = Number.EPSILON * Math.max(qty, available) * 4;
+        if (qty - available > tolerance) {
+          return fail('sell_exceeds_custody', 'quantidade de venda maior que o saldo do ativo em custódia');
+        }
+        finalQty = Math.min(qty, available);
+        const costs = (op.feeUSD || 0) + (op.spreadUSD || 0);
+        if (costs >= op.value) return fail('costs_exceed_sale', 'taxa e spread somam mais que o valor da venda');
+      }
+      return { ok: true, qty: finalQty };
+    }
+
+    /**
+     * Valida uma lista de registros (formato antigo de backup) reaplicando as regras de operação em ordem cronológica.
+     * Registros: { kind:'trade'|'deposit', ... }. Depósito: amount numérico diferente de zero.
+     * Retorna { valid:[registros], invalid:[{ number, kind, code, reason }] } — number é a posição (1-based) no arquivo.
+     */
+    static validateImportedRecords(assetKeys, records) {
+      const invalid = [];
+      const entries = (Array.isArray(records) ? records : []).map((r, i) => ({ r, number: i + 1 }));
+      const bad = (e, code, reason) => invalid.push({ number: e.number, kind: e.r && e.r.kind, code, reason });
+      const ordered = [];
+      for (const e of entries) {
+        if (!e.r || typeof e.r !== 'object' || Array.isArray(e.r)) { bad(e, 'invalid_operation', 'registro ausente ou em formato inválido'); continue; }
+        if (typeof e.r.timestamp !== 'number' || !Number.isFinite(e.r.timestamp)) { bad(e, 'invalid_timestamp', 'data (timestamp) ausente ou inválida'); continue; }
+        ordered.push(e);
+      }
+      // Mesma ordem da reconstrução da cadeia (por data; empate mantém a ordem do arquivo).
+      ordered.sort((a, b) => a.r.timestamp - b.r.timestamp || a.number - b.number);
+      const custody = {};
+      const valid = [];
+      for (const e of ordered) {
+        const r = e.r;
+        if (r.kind === 'deposit') {
+          if (typeof r.amount !== 'number' || !Number.isFinite(r.amount) || r.amount === 0) {
+            bad(e, 'invalid_deposit', 'depósito com valor ausente, zero ou não numérico');
+            continue;
+          }
+          valid.push(r);
+          continue;
+        }
+        const price = r.price;
+        const value = r.value != null ? r.value : (typeof r.qty === 'number' && typeof price === 'number' ? r.qty * price : undefined);
+        const op = { asset: r.asset, type: r.type, value, price, qty: r.qty, feeUSD: r.feeUSD != null ? r.feeUSD : r.fee, spreadUSD: r.spreadUSD };
+        const res = TradeRulesService.validateTrade(op, { assetKeys, availableQty: custody[r.asset] || 0 });
+        if (!res.ok) { bad(e, res.code, res.reason); continue; }
+        custody[r.asset] = (custody[r.asset] || 0) + (r.type === 'buy' ? res.qty : -res.qty);
+        if (custody[r.asset] < 0) custody[r.asset] = 0;
+        valid.push(r);
+      }
+      invalid.sort((a, b) => a.number - b.number);
+      return { valid, invalid };
+    }
+
+    /** Mensagem exata mostrada ao usuário quando a importação do formato antigo é rejeitada. */
+    static describeImportRejection(invalid, total) {
+      const n = invalid.length;
+      const head = `Importação rejeitada: ${n} de ${total} ${total === 1 ? 'registro é inválido' : 'registros são inválidos'}. Nada foi importado.`;
+      const shown = invalid.slice(0, 3).map(i => `registro nº ${i.number}: ${i.reason}`).join('; ');
+      const more = n > 3 ? ` (e mais ${n - 3})` : '';
+      return `${head} ${shown}${more}.`;
+    }
+
+    /** Conta operações e depósitos de uma cadeia (bloco gênese não conta). */
+    static summarizeChain(chainArr) {
+      let trades = 0, deposits = 0;
+      for (const b of Array.isArray(chainArr) ? chainArr : []) {
+        if (!b || !b.data) continue;
+        if (b.data.kind === 'deposit') deposits++; else trades++;
+      }
+      return { trades, deposits };
+    }
+  }
+
+  // ==========================================
   // ADAPTER EXPORT (Mantendo assinatura legada)
   // ==========================================
   const taxSvc = new TaxReportService();
@@ -529,6 +639,10 @@
     tradeCostsUSD: (t) => (new TradeOperation(t)).getCostsUSD(),
     tradeNetUSD: (t) => (new TradeOperation(t)).getNetUSD(),
     totalTradeCostsUSD: PortfolioService.totalTradeCostsUSD,
+    validateTrade: TradeRulesService.validateTrade,
+    validateImportedRecords: TradeRulesService.validateImportedRecords,
+    describeImportRejection: TradeRulesService.describeImportRejection,
+    summarizeChain: TradeRulesService.summarizeChain,
     calculateDCASimulation: SimulationService.calculateDCASimulation,
     calculateTargetProfitScenarios: SimulationService.calculateTargetProfitScenarios,
     FALLBACK_BRL_PER_USD: cst.fallbackBrlPerUsd,

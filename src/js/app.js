@@ -4,6 +4,107 @@
   function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
   function b64ToBuf(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
   function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  /* ---- avisos ao usuário (faixa no topo; no lugar de alert nativo) ---- */
+  // Um aviso por id: repetir o mesmo id substitui o texto em vez de empilhar. persistent: sem botão de fechar.
+  function showNotice(id, text, { persistent = false, detail = '' } = {}) {
+    const host = document.getElementById('appNotices');
+    if (!host) return;
+    let el = Array.from(host.children).find(n => n.dataset.notice === id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'notice-banner';
+      el.dataset.notice = id;
+      el.setAttribute('role', 'alert');
+      host.appendChild(el);
+    }
+    el.textContent = '';
+    const icon = document.createElement('span');
+    icon.className = 'notice-icon';
+    icon.innerHTML = window.FinancIcons ? window.FinancIcons.svg('alert', { size: 18 }) : '';
+    const body = document.createElement('span');
+    body.className = 'notice-text';
+    body.textContent = text;
+    if (detail) {
+      const small = document.createElement('small');
+      small.className = 'notice-detail';
+      small.textContent = detail;
+      body.appendChild(small);
+    }
+    el.append(icon, body);
+    if (!persistent) {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'notice-close';
+      close.setAttribute('aria-label', 'Dispensar aviso');
+      close.innerHTML = window.FinancIcons ? window.FinancIcons.svg('x', { size: 16 }) : '';
+      close.addEventListener('click', () => el.remove());
+      el.appendChild(close);
+    }
+  }
+  function clearNotice(id) {
+    const host = document.getElementById('appNotices');
+    if (!host) return;
+    Array.from(host.children).filter(n => n.dataset.notice === id).forEach(n => n.remove());
+  }
+
+  /* ---- gravação e leitura locais (nenhuma falha é engolida) ---- */
+  // O cofre (secureStorage) guarda na memória na hora e grava cifrado depois: só o flush() confirma que foi para o disco.
+  const SAVE_FAILURE_NOTICE = {
+    chain: 'Não foi possível salvar o histórico de operações. O que foi feito agora não foi gravado; tente de novo ou faça um backup.',
+    history: 'Não foi possível salvar o histórico de patrimônio. O gráfico pode perder pontos; faça um backup.',
+    alerts: 'Não foi possível salvar os alertas de preço. A alteração não foi gravada; tente de novo ou faça um backup.',
+    settings: 'Não foi possível salvar as configurações. A alteração não foi gravada; tente de novo ou faça um backup.',
+    favorites: 'Não foi possível salvar seus ativos favoritos. A alteração não foi gravada; tente de novo.',
+    portfolios: 'Não foi possível salvar a lista de carteiras. A alteração não foi gravada; tente de novo ou faça um backup.'
+  };
+  // Devolve true se gravou e confirmou; false se falhou (já registrou o erro, avisou o usuário e desfez a gravação em memória).
+  async function writeLocal(name, key, value) {
+    let previous = null;
+    try {
+      previous = localStorage.getItem(key);
+      localStorage.setItem(key, JSON.stringify(value));
+      if (typeof localStorage.flush === 'function') await localStorage.flush();
+      clearNotice('save-' + name);
+      return true;
+    } catch (e) {
+      console.error('Falha de gravação local: ' + name, e);
+      try {
+        // Sem isto, o valor recusado seguiria no cofre e seria gravado no próximo flush bem-sucedido.
+        if (previous === null) localStorage.removeItem(key); else localStorage.setItem(key, previous);
+      } catch (undoError) {
+        console.error('Falha ao desfazer a gravação local: ' + name, undoError);
+      }
+      showNotice('save-' + name, SAVE_FAILURE_NOTICE[name] || 'Não foi possível salvar. Tente de novo ou faça um backup.');
+      return false;
+    }
+  }
+  // Leitura de JSON gravado. Se estiver ilegível: registra, guarda uma cópia do texto original (para recuperação) e
+  // devolve o padrão; o chamador avisa o usuário com flushLoadProblems().
+  const loadProblems = [];
+  // Com array: true, um JSON válido que não seja lista também conta como dado ilegível (mesmo tratamento: log, cópia e aviso).
+  function readLocalJson(label, key, fallback, { keepCopy = false, array = false } = {}) {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(key);
+      const parsed = JSON.parse(raw);
+      if (array && parsed != null && !Array.isArray(parsed)) throw new Error('formato inesperado: esperava uma lista');
+      return parsed == null ? fallback : parsed;
+    } catch (e) {
+      console.error('Falha de leitura local: ' + label, e);
+      loadProblems.push(label);
+      if (keepCopy && raw) {
+        try { localStorage.setItem(key + '.corrompido', raw); }
+        catch (copyError) { console.error('Falha ao guardar cópia do dado ilegível: ' + label, copyError); }
+      }
+      return fallback;
+    }
+  }
+  function flushLoadProblems() {
+    if (!loadProblems.length) return;
+    const names = Array.from(new Set(loadProblems.splice(0)));
+    showNotice('load-problems', `Não foi possível ler dados salvos (${names.join(', ')}). Eles foram reiniciados nesta carteira; se precisar deles, restaure um backup.`);
+  }
   function renderSecuritySection() {
     const el = document.getElementById('securityContent');
     el.innerHTML = '<p>Seus dados locais são criptografados. Abra com o PIN de 6 números ou com a biometria do aparelho. Guarde as 12 palavras mostradas na configuração: elas recuperam o PIN e abrem seus backups.</p><button class="icon-btn" id="bioSettingsBtn">' + FinancIcons.svg('settings', { size: 15 }) + ' Configurações de segurança</button><button class="icon-btn" id="manageCertBtn">' + FinancIcons.svg('shield', { size: 15 }) + ' Gerenciar certificado</button><button class="icon-btn" id="lockNowBtn">' + FinancIcons.svg('lock', { size: 15 }) + ' Bloquear agora</button>';
@@ -15,68 +116,15 @@
   /* ---- modal de Segurança ---- */
   function openSecurityModal() {
     renderSecuritySection();
-    document.getElementById('securityModalOverlay').style.display = 'flex';
+    document.getElementById('securityModalOverlay').classList.remove('is-hidden');
   }
   function closeSecurityModal() {
-    document.getElementById('securityModalOverlay').style.display = 'none';
+    document.getElementById('securityModalOverlay').classList.add('is-hidden');
   }
   document.getElementById('openSecurityBtn').addEventListener('click', openSecurityModal);
   document.getElementById('closeSecurityModalBtn').addEventListener('click', closeSecurityModal);
   document.getElementById('securityModalOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'securityModalOverlay') closeSecurityModal();
-  });
-
-  /* ---- modal de ajuda: navegador sem suporte a escrita direta em arquivo ---- */
-  function renderFileAccessHelp() {
-    const flagUrl = 'brave://flags/#file-system-access-api';
-    const el = document.getElementById('fileAccessContent');
-    el.innerHTML = `
-      <p style="font-size:14px; line-height:1.6; margin:0 0 10px;">
-        Este navegador não expõe a <strong>File System Access API</strong>, então o app não consegue
-        gravar automaticamente num arquivo JSON no seu disco. No Brave isso costuma estar desativado
-        por padrão (proteção contra fingerprinting) — dá pra ligar manualmente:
-      </p>
-      <ol class="help-steps">
-        <li>Copie o link abaixo e cole numa nova aba</li>
-        <li>Ative a opção <strong>"File System Access API"</strong></li>
-        <li>Clique em <strong>Reiniciar</strong> quando o Brave pedir</li>
-        <li>Volte aqui e clique de novo em "Conectar arquivo JSON"</li>
-      </ol>
-      <div class="code-row">
-        <code>${flagUrl}</code>
-        <button type="button" id="copyFlagUrlBtn">Copiar</button>
-      </div>
-      <p style="font-size:12.5px; color:var(--ink-dim); line-height:1.6; margin:10px 0 16px;">
-        Por segurança, nenhum site (nem este) consegue ligar essa flag sozinho ou abrir
-        <code>brave://flags</code> diretamente — é uma configuração do navegador, não uma permissão do app.
-      </p>
-      <button class="submit-btn" id="useExportInsteadBtn" type="button">Usar Exportar/Importar agora</button>
-    `;
-    document.getElementById('copyFlagUrlBtn').addEventListener('click', async () => {
-      const btn = document.getElementById('copyFlagUrlBtn');
-      try {
-        await navigator.clipboard.writeText(flagUrl);
-        btn.textContent = 'Copiado!';
-      } catch (e) {
-        btn.textContent = 'não foi possível copiar';
-      }
-      setTimeout(() => { btn.textContent = 'Copiar'; }, 2000);
-    });
-    document.getElementById('useExportInsteadBtn').addEventListener('click', () => {
-      closeFileAccessModal();
-      document.getElementById('exportBtn').click();
-    });
-  }
-  function openFileAccessModal() {
-    renderFileAccessHelp();
-    document.getElementById('fileAccessModalOverlay').style.display = 'flex';
-  }
-  function closeFileAccessModal() {
-    document.getElementById('fileAccessModalOverlay').style.display = 'none';
-  }
-  document.getElementById('closeFileAccessModalBtn').addEventListener('click', closeFileAccessModal);
-  document.getElementById('fileAccessModalOverlay').addEventListener('click', (e) => {
-    if (e.target.id === 'fileAccessModalOverlay') closeFileAccessModal();
   });
 
   /* ============ CERTIFICADO DIGITAL (2FA CRIPTOGRÁFICO) ============ */
@@ -89,7 +137,10 @@
     try {
       const raw = localStorage.getItem(DEVICE_CERT_KEY);
       return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+    } catch (e) {
+      // Certificado próprio é opcional: ilegível, o app segue sem ele (cai no certificado FINANC ou pede o certificado ao abrir o backup).
+      return null;
+    }
   }
   // Backup antigo pode ter sido cifrado com um certificado anterior: procura pelo id.
   function certFor(id) {
@@ -118,26 +169,26 @@
     const cert = await ensureDeviceCert();
     const el = document.getElementById('certModalContent');
     el.innerHTML = `
-      <div style="font-size:13.5px; line-height:1.6; color:var(--ink); margin-bottom:14px;">
+      <div class="cert-intro">
         ${FinancCert.fromSeed ? 'O certificado sai das suas <strong>12 palavras</strong>: é o mesmo em qualquer aparelho onde você usar as mesmas palavras. Em outro celular, basta digitar as 12 palavras para abrir seus backups; gerar ou baixar o certificado pede só o PIN.'
           : (FinancCert.linked ? 'Este aparelho usa um <strong>certificado digital único</strong>, o mesmo em todos os apps.' : 'Este aparelho possui um <strong>Certificado Digital Exclusivo</strong> gerado no navegador.')
             + ' Se alguém descobrir seu PIN ou senha, <strong>ainda assim NÃO conseguirá abrir seu arquivo JSON</strong> em outro computador ou celular sem importar este arquivo de certificado antes.'}
       </div>
 
-      <div class="card" style="margin-bottom:14px; background:var(--surface-2);">
-        <div style="font-size:11px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace;">ID DO CERTIFICADO</div>
-        <div style="font-size:16px; font-family:'IBM Plex Mono',monospace; font-weight:600; margin:4px 0 8px; color:var(--accent);">${escapeHtml(cert.id)}</div>
-        <div style="font-size:11px; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace;">CRIADO EM</div>
-        <div style="font-size:12.5px; font-family:'IBM Plex Mono',monospace;">${new Date(cert.createdAt).toLocaleString('pt-BR')}</div>
+      <div class="card cert-card">
+        <div class="cert-label">ID DO CERTIFICADO</div>
+        <div class="cert-id">${escapeHtml(cert.id)}</div>
+        <div class="cert-label">CRIADO EM</div>
+        <div class="cert-date">${new Date(cert.createdAt).toLocaleString('pt-BR')}</div>
       </div>
 
-      <div style="display:flex; flex-direction:column; gap:10px;">
+      <div class="stack-10">
         <button class="submit-btn" id="downloadCertBtn" type="button">Baixar Certificado (.cert.json)</button>
-        <button class="icon-btn" id="uploadCertBtn" type="button" style="padding:11px;">Importar Certificado de Outro Aparelho</button>
-        <input type="file" id="importCertFileInput" accept="application/json" style="display:none;">
-        <button class="icon-btn" id="regenCertBtn" type="button" style="${FinancCert.fromSeed ? '' : 'color:var(--down); '}padding:11px;">${FinancCert.fromSeed ? 'Gerar certificado das 12 palavras' : 'Gerar Novo Certificado'}</button>
+        <button class="icon-btn cert-btn" id="uploadCertBtn" type="button">Importar Certificado de Outro Aparelho</button>
+        <input type="file" id="importCertFileInput" accept="application/json" class="is-hidden">
+        <button class="icon-btn cert-btn${FinancCert.fromSeed ? '' : ' is-danger'}" id="regenCertBtn" type="button">${FinancCert.fromSeed ? 'Gerar certificado das 12 palavras' : 'Gerar Novo Certificado'}</button>
       </div>
-      <div class="status" id="certStatus" style="margin-top:12px;"></div>
+      <div class="status status-spaced" id="certStatus"></div>
     `;
 
     const UiEventsCert = {
@@ -199,10 +250,10 @@
 
   async function openCertModal() {
     await renderCertModal();
-    document.getElementById('certModalOverlay').style.display = 'flex';
+    document.getElementById('certModalOverlay').classList.remove('is-hidden');
   }
   function closeCertModal() {
-    document.getElementById('certModalOverlay').style.display = 'none';
+    document.getElementById('certModalOverlay').classList.add('is-hidden');
   }
   document.getElementById('closeCertModalBtn').addEventListener('click', closeCertModal);
   document.getElementById('certModalOverlay').addEventListener('click', (e) => {
@@ -278,6 +329,13 @@
     return JSON.parse(new TextDecoder().decode(plainBuf));
   }
 
+  /* Valores calculados em runtime (largura de barra, cor de série): vão para
+     custom properties via CSSOM, o que a CSP aceita sem 'unsafe-inline'. */
+  function paintDynamic(root) {
+    root.querySelectorAll('[data-pct]').forEach(el => el.style.setProperty('--pct', el.dataset.pct + '%'));
+    root.querySelectorAll('[data-color]').forEach(el => el.style.setProperty('--c', el.dataset.color));
+  }
+
   /* ============ ATIVOS ============ */
   const ASSETS = {
     btc:  { name: 'Bitcoin',    geckoId: 'bitcoin',     binanceSymbol: 'BTCUSDT' },
@@ -292,7 +350,7 @@
     avax: { name: 'Avalanche',  geckoId: 'avalanche-2', binanceSymbol: 'AVAXUSDT' },
   };
   const ASSET_KEYS = Object.keys(ASSETS);
-  const ALLOC_COLORS = ['#6FCF97','#7FA6CF','#CFA36F','#B48FE0','#E0A7CF','#8FE0D0','#E0D08F','#A7B4E0','#E08F9A','#9AE08F'];
+  const ALLOC_COLORS = [0,1,2,3,4,5,6,7,8,9].map(n => `var(--alloc-${n})`);
   const AVATAR = {
     usd:  { symbol: '$', bg: 'rgba(111,207,151,0.15)', color: 'var(--accent)' },
     brl:  { symbol: 'R$', bg: 'rgba(143,160,152,0.18)', color: 'var(--ink)' },
@@ -309,7 +367,7 @@
   };
   function avatarHtml(assetKey) {
     const a = AVATAR[assetKey] || { symbol: assetKey.charAt(0).toUpperCase(), bg: 'var(--surface-2)', color: 'var(--ink)' };
-    return `<span class="asset-avatar" style="background:${a.bg}; color:${a.color};">${a.symbol}</span>`;
+    return `<span class="asset-avatar" data-asset="${assetKey}">${a.symbol}</span>`;
   }
 
   const CURRENCIES = [
@@ -351,7 +409,6 @@
     { icon: 'download', label: 'Exportar backup (JSON)', description: 'Protegido pelas suas 12 palavras: abre em qualquer aparelho com elas.', onClick: clickById('exportBtn') },
     { icon: 'upload', label: 'Importar backup (JSON)', description: 'Restaura um backup exportado.', onClick: clickById('importBtn') },
     { icon: 'file-text', label: 'Exportar extrato (CSV)', description: 'Operações para planilha.', onClick: clickById('exportCsvBtn') },
-    { icon: 'link', label: 'Salvamento direto em arquivo', description: 'Grava automaticamente num JSON do aparelho.', onClick: clickById('connectFileBtn') },
     { icon: 'shield', label: 'Certificado digital', description: 'Sai das 12 palavras; gerar e baixar pedem só o PIN.', onClick: () => openCertModal() },
     { icon: 'file-text', label: 'Relatório fiscal e IRPF', description: 'Alienações mensais e ganho de capital.', onClick: clickById('openTaxModalBtn') },
   ] });
@@ -361,8 +418,8 @@
   const tabsIndicator = document.getElementById('tabsIndicator');
   // Acompanha o tamanho real de cada aba.
   function moveTabsIndicator(btn) {
-    tabsIndicator.style.width = btn.offsetWidth + 'px';
-    tabsIndicator.style.transform = `translateX(${btn.offsetLeft - tabsIndicator.offsetLeft}px)`;
+    tabsIndicator.style.setProperty('--tab-w', btn.offsetWidth + 'px');
+    tabsIndicator.style.setProperty('--tab-x', (btn.offsetLeft - tabsIndicator.offsetLeft) + 'px');
   }
   tabButtonsList.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -407,18 +464,20 @@
   try {
     const stored = JSON.parse(localStorage.getItem(FAVORITES_KEY));
     if (Array.isArray(stored) && stored.length) favoriteAssets = stored;
-  } catch (e) {}
+  } catch (e) {
+    // Favoritos são só preferência visual: ilegíveis, vale a lista padrão acima.
+  }
   let showAllAssets = false;
   let editingFavorites = false;
 
   function saveFavorites() {
-    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteAssets)); } catch (e) {}
+    return writeLocal('favorites', FAVORITES_KEY, favoriteAssets);
   }
 
   function renderFavoritesEditor() {
     const el = document.getElementById('favoritesEditor');
-    if (!editingFavorites) { el.style.display = 'none'; el.innerHTML = ''; return; }
-    el.style.display = 'block';
+    if (!editingFavorites) { el.classList.add('is-hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('is-hidden');
     el.innerHTML = `
       <div class="favorites-editor">
         <div class="fe-title">MOEDAS PRINCIPAIS — ficam sempre visíveis</div>
@@ -430,11 +489,12 @@
         `).join('')}
       </div>`;
     el.querySelectorAll('input[data-fav]').forEach(cb => {
-      cb.addEventListener('change', () => {
+      cb.addEventListener('change', async () => {
         const key = cb.dataset.fav;
-        if (cb.checked) { if (!favoriteAssets.includes(key)) favoriteAssets.push(key); }
-        else { favoriteAssets = favoriteAssets.filter(k => k !== key); }
-        saveFavorites();
+        const previous = favoriteAssets;
+        favoriteAssets = cb.checked ? (previous.includes(key) ? previous : [...previous, key]) : previous.filter(k => k !== key);
+        // Não gravou: volta a lista e a caixa marcada ao que estava (a tela não mostra como salvo).
+        if (!await saveFavorites()) { favoriteAssets = previous; cb.checked = previous.includes(key); }
         renderConverter();
       });
     });
@@ -473,7 +533,7 @@
       let changeHtml = '';
       if (change24h[c.id] != null) {
         const up = change24h[c.id] >= 0;
-        changeHtml = `<span class="change" style="color:${up ? 'var(--up)' : 'var(--down)'}">${up ? '+' : ''}${change24h[c.id].toFixed(2)}%</span>`;
+        changeHtml = `<span class="change ${up ? 'is-up' : 'is-down'}">${up ? '+' : ''}${change24h[c.id].toFixed(2)}%</span>`;
       }
       return `
         <div class="result-row">
@@ -487,7 +547,7 @@
       html += `
         <div class="toggle-more-row">
           <span>${showAllAssets ? `mostrando todas as ${others.length} moedas` : `${rest.length} moeda${rest.length > 1 ? 's' : ''} oculta${rest.length > 1 ? 's' : ''}`}</span>
-          <span style="display:flex; gap:8px;">
+          <span class="toggle-more-actions">
             <button id="editFavoritesBtn">${editingFavorites ? 'Concluir' : 'Editar principais'}</button>
             <button id="toggleMoreBtn">${showAllAssets ? 'Mostrar menos' : 'Mostrar mais'}</button>
           </span>
@@ -539,8 +599,8 @@
   async function updateSparkline() {
     const from = document.getElementById('fromCurrency').value;
     const wrap = document.getElementById('sparklineWrap');
-    if (!ASSETS[from]) { wrap.style.display = 'none'; return; }
-    wrap.style.display = 'block';
+    if (!ASSETS[from]) { wrap.classList.add('is-hidden'); return; }
+    wrap.classList.remove('is-hidden');
     document.getElementById('sparklineLabel').textContent = `${ASSETS[from].name} — últimos 7 dias (USD)`;
 
     const cached = sparkCache[from];
@@ -560,6 +620,7 @@
       sparkCache[from] = { time: Date.now(), points };
       renderSparklineSvg(points);
     } catch (e) {
+      // Falha do CoinGecko (rede, limite ou resposta ruim) é esperada: cai no fallback da Binance abaixo; se ambos falharem, a tela avisa.
       // Fallback para Binance klines (42 candles de 4h = 7 dias)
       try {
         const symbol = ASSETS[from].binanceSymbol;
@@ -587,10 +648,10 @@
     });
     const path = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
     const up = points[points.length - 1] >= points[0];
-    const color = up ? '#6FCF97' : '#E08585';
+    const color = up ? 'var(--up)' : 'var(--down)';
     const areaPath = path + ` L${coords[coords.length-1][0].toFixed(1)},${h-pad} L${coords[0][0].toFixed(1)},${h-pad} Z`;
     document.getElementById('sparklineSvg').innerHTML = `
-      <svg viewBox="0 0 ${w} ${h}" style="width:100%; height:${h}px; display:block;">
+      <svg class="chart-svg" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
         <path d="${areaPath}" fill="${color}" opacity="0.12" stroke="none"/>
         <path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>
       </svg>`;
@@ -602,19 +663,28 @@
   let portfolios = [];
   let currentPortfolioId = null;
 
-  function loadPortfolioList() {
-    try { portfolios = JSON.parse(localStorage.getItem(PORTFOLIOS_KEY)) || []; }
-    catch (e) { portfolios = []; }
+  async function loadPortfolioList() {
+    portfolios = readLocalJson('lista de carteiras', PORTFOLIOS_KEY, [], { keepCopy: true, array: true });
     if (portfolios.length === 0) {
       portfolios = [{ id: 'real', name: 'Real' }, { id: 'teste', name: 'Teste' }];
-      localStorage.setItem(PORTFOLIOS_KEY, JSON.stringify(portfolios));
+      await writeLocal('portfolios', PORTFOLIOS_KEY, portfolios);
     }
     currentPortfolioId = localStorage.getItem(CURRENT_PORTFOLIO_KEY) || portfolios[0].id;
     if (!portfolios.find(p => p.id === currentPortfolioId)) currentPortfolioId = portfolios[0].id;
   }
-  function savePortfolioList() {
-    localStorage.setItem(PORTFOLIOS_KEY, JSON.stringify(portfolios));
-    localStorage.setItem(CURRENT_PORTFOLIO_KEY, currentPortfolioId);
+  async function savePortfolioList() {
+    const listSaved = await writeLocal('portfolios', PORTFOLIOS_KEY, portfolios);
+    if (!listSaved) return false;
+    // A carteira atual é texto puro (não JSON): grava e confirma como a lista.
+    try {
+      localStorage.setItem(CURRENT_PORTFOLIO_KEY, currentPortfolioId);
+      if (typeof localStorage.flush === 'function') await localStorage.flush();
+      return true;
+    } catch (e) {
+      console.error('Falha de gravação local: carteira atual', e);
+      showNotice('save-portfolios', SAVE_FAILURE_NOTICE.portfolios);
+      return false;
+    }
   }
   function renderPortfolioSelect() {
     const sel = document.getElementById('portfolioSelect');
@@ -623,46 +693,101 @@
   document.getElementById('portfolioSelect').addEventListener('change', async (e) => {
     currentPortfolioId = e.target.value;
     localStorage.setItem(CURRENT_PORTFOLIO_KEY, currentPortfolioId);
-    resetFileConnectionState();
     await loadCurrentPortfolioData();
     renderSimulator();
-    await tryAutoConnect();
   });
   document.getElementById('newPortfolioBtn').addEventListener('click', async () => {
     const name = prompt('Nome da nova carteira:');
     if (!name || !name.trim()) return;
     const id = 'p' + Date.now();
+    const previousId = currentPortfolioId;
     portfolios.push({ id, name: name.trim() });
     currentPortfolioId = id;
-    savePortfolioList();
+    if (!await savePortfolioList()) {
+      // Não gravou: a carteira nova não pode aparecer como criada.
+      portfolios = portfolios.filter(p => p.id !== id);
+      currentPortfolioId = previousId;
+      renderPortfolioSelect();
+      return;
+    }
     renderPortfolioSelect();
-    resetFileConnectionState();
     await loadCurrentPortfolioData();
     renderSimulator();
-    await tryAutoConnect();
   });
-  document.getElementById('renamePortfolioBtn').addEventListener('click', () => {
+  document.getElementById('renamePortfolioBtn').addEventListener('click', async () => {
     const p = portfolios.find(p => p.id === currentPortfolioId);
     if (!p) return;
     const name = prompt('Novo nome da carteira:', p.name);
     if (!name || !name.trim()) return;
+    const previousName = p.name;
     p.name = name.trim();
-    savePortfolioList();
+    if (!await savePortfolioList()) p.name = previousName;
     renderPortfolioSelect();
   });
-  document.getElementById('deletePortfolioBtn').addEventListener('click', async () => {
-    if (portfolios.length <= 1) { alert('Precisa manter ao menos uma carteira.'); return; }
-    if (!confirm('Excluir esta carteira e todos os seus dados?')) return;
-    ['trades','chain','deposits','depositsMigrated','history','alerts','settings'].forEach(k => localStorage.removeItem(`cripto-${k}:${currentPortfolioId}`));
-    await idbDelete('fileHandle:' + currentPortfolioId);
-    portfolios = portfolios.filter(p => p.id !== currentPortfolioId);
-    currentPortfolioId = portfolios[0].id;
-    savePortfolioList();
+  /* ---- excluir carteira: confirmação em modal (nome + nº de operações), com backup oferecido antes ---- */
+  function pluralize(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
+  function describePortfolioDeletion(name, counts) {
+    return `Você vai excluir a carteira "${name}", com ${pluralize(counts.trades, 'operação', 'operações')} e ${pluralize(counts.deposits, 'depósito', 'depósitos')}. `
+      + 'Todos os dados dela serão apagados deste aparelho e não há como desfazer.';
+  }
+  function openDeletePortfolioModal() {
+    const p = portfolios.find(x => x.id === currentPortfolioId);
+    if (!p) return;
+    document.getElementById('deletePortfolioText').textContent = describePortfolioDeletion(p.name, FinanceEngine.summarizeChain(chain));
+    document.getElementById('deletePortfolioStatus').textContent = '';
+    document.getElementById('deletePortfolioOverlay').classList.remove('is-hidden');
+    document.getElementById('deletePortfolioCancelBtn').focus();
+  }
+  function closeDeletePortfolioModal() {
+    document.getElementById('deletePortfolioOverlay').classList.add('is-hidden');
+  }
+  async function confirmDeletePortfolio() {
+    const confirmBtn = document.getElementById('deletePortfolioConfirmBtn');
+    confirmBtn.disabled = true;
+    const doomedId = currentPortfolioId;
+    const previousList = portfolios;
+    const remaining = portfolios.filter(p => p.id !== doomedId);
+    portfolios = remaining;
+    currentPortfolioId = remaining[0].id;
+    // Primeiro grava a lista sem a carteira: se falhar, nada foi apagado.
+    if (!await savePortfolioList()) {
+      portfolios = previousList;
+      currentPortfolioId = doomedId;
+      document.getElementById('deletePortfolioStatus').textContent = 'Não foi possível excluir: a lista de carteiras não foi gravada. Nada foi apagado.';
+      confirmBtn.disabled = false;
+      return;
+    }
+    try {
+      ['trades','chain','deposits','depositsMigrated','history','alerts','settings'].forEach(k => localStorage.removeItem(`cripto-${k}:${doomedId}`));
+      if (typeof localStorage.flush === 'function') await localStorage.flush();
+    } catch (e) {
+      console.error('Falha ao apagar os dados da carteira excluída', e);
+      showNotice('delete-portfolio', 'A carteira saiu da lista, mas seus dados antigos não puderam ser apagados deste aparelho. Eles não aparecem mais no app.');
+    }
+    confirmBtn.disabled = false;
+    closeDeletePortfolioModal();
     renderPortfolioSelect();
-    resetFileConnectionState();
     await loadCurrentPortfolioData();
     renderSimulator();
-    await tryAutoConnect();
+  }
+  document.getElementById('deletePortfolioBtn').addEventListener('click', () => {
+    if (portfolios.length <= 1) { showNotice('delete-portfolio', 'Precisa manter ao menos uma carteira.'); return; }
+    openDeletePortfolioModal();
+  });
+  document.getElementById('deletePortfolioExportBtn').addEventListener('click', async () => {
+    const status = document.getElementById('deletePortfolioStatus');
+    status.textContent = 'Preparando o backup…';
+    const ok = await exportBackup();
+    status.textContent = ok ? 'Backup preparado. Confira se o arquivo foi salvo antes de excluir.' : 'O backup não foi gerado. Veja o aviso na tela antes de excluir.';
+  });
+  document.getElementById('deletePortfolioConfirmBtn').addEventListener('click', confirmDeletePortfolio);
+  document.getElementById('deletePortfolioCancelBtn').addEventListener('click', closeDeletePortfolioModal);
+  document.getElementById('closeDeletePortfolioBtn').addEventListener('click', closeDeletePortfolioModal);
+  document.getElementById('deletePortfolioOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'deletePortfolioOverlay') closeDeletePortfolioModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('deletePortfolioOverlay').classList.contains('is-hidden')) closeDeletePortfolioModal();
   });
 
   /* ============ DADOS DA CARTEIRA ATUAL ============ */
@@ -680,8 +805,6 @@
     };
   }
   let trades = [], chain = [], deposits = [], netWorthHistory = [], alerts = [], settings = defaultSettings();
-  let fileHandle = null;
-  let connectedFilePassword = null; // fica só na memória desta sessão — nunca é salva
 
   function keyFor(name) { return `cripto-${name}:${currentPortfolioId}`; }
 
@@ -764,9 +887,27 @@
   function chainToDeposits() {
     return chain.filter(b => b.data && b.data.kind === 'deposit').map(b => ({ ...b.data, _hash: b.hash, _index: b.index }));
   }
+  // Verificação da cadeia ao abrir (e a cada carteira carregada): aviso persistente e não bloqueante.
+  const CHAIN_INTEGRITY_WARNING = 'O histórico tem inconsistências; os relatórios de IR podem estar errados. Restaure um backup ou exporte para conferência.';
+  function applyChainIntegrity(result) {
+    if (result && result.valid) { clearNotice('chain-integrity'); return; }
+    const at = result && Number.isFinite(result.at) ? result.at : 0;
+    const reason = (result && result.reason) || 'não foi possível verificar';
+    console.error('Cadeia de operações com inconsistência detectada na verificação');
+    showNotice('chain-integrity', CHAIN_INTEGRITY_WARNING, { persistent: true, detail: `Bloco #${at}: ${reason}` });
+  }
+  async function checkChainOnOpen() {
+    let result;
+    try { result = await verifyChainIntegrity(chain); }
+    catch (e) {
+      console.error('Falha ao verificar a integridade da cadeia na abertura', e);
+      result = { valid: false, at: 0, reason: 'a verificação não pôde ser concluída' };
+    }
+    applyChainIntegrity(result);
+    return result;
+  }
   function saveChain() {
-    try { localStorage.setItem(keyFor('chain'), JSON.stringify(chain)); } catch (e) {}
-    writeToFile();
+    return writeLocal('chain', keyFor('chain'), chain);
   }
   async function rebuildChainFromDataList(dataList) {
     const sorted = [...dataList].sort((a, b) => a.timestamp - b.timestamp);
@@ -776,52 +917,47 @@
   }
 
   async function loadCurrentPortfolioData() {
-    try { chain = JSON.parse(localStorage.getItem(keyFor('chain'))) || []; } catch (e) { chain = []; }
+    chain = readLocalJson('histórico de operações', keyFor('chain'), [], { keepCopy: true, array: true });
     const depositsMigrated = localStorage.getItem(keyFor('depositsMigrated')) === '1';
 
     if (chain.length === 0) {
       // primeira vez nesta carteira: cria o bloco gênese e migra operações + depósitos antigos (formato pré-blockchain), se existirem
-      let legacyTrades = [], legacyDeposits = [];
-      try { legacyTrades = JSON.parse(localStorage.getItem(keyFor('trades'))) || []; } catch (e) {}
-      try { legacyDeposits = JSON.parse(localStorage.getItem(keyFor('deposits'))) || []; } catch (e) {}
+      const legacyTrades = readLocalJson('operações antigas', keyFor('trades'), [], { array: true });
+      const legacyDeposits = readLocalJson('depósitos antigos', keyFor('deposits'), [], { array: true });
       const combined = [
         ...legacyTrades.map(t => ({ ...t, kind: 'trade' })),
         ...legacyDeposits.map(d => ({ ...d, kind: 'deposit' })),
       ];
       chain = await rebuildChainFromDataList(combined);
-      saveChain();
+      await saveChain();
       localStorage.setItem(keyFor('depositsMigrated'), '1');
     } else if (!depositsMigrated) {
       // chain já existia de uma versão anterior (só com operações); junta os depósitos legados agora
-      let legacyDeposits = [];
-      try { legacyDeposits = JSON.parse(localStorage.getItem(keyFor('deposits'))) || []; } catch (e) {}
+      const legacyDeposits = readLocalJson('depósitos antigos', keyFor('deposits'), [], { array: true });
       const existingData = chain.filter(b => b.data).map(b => ({ ...b.data, kind: b.data.kind || 'trade' }));
       const combined = [...existingData, ...legacyDeposits.map(d => ({ ...d, kind: 'deposit' }))];
       chain = await rebuildChainFromDataList(combined);
-      saveChain();
+      await saveChain();
       localStorage.setItem(keyFor('depositsMigrated'), '1');
     }
 
     trades = chainToTrades();
     deposits = chainToDeposits();
-    try { netWorthHistory = JSON.parse(localStorage.getItem(keyFor('history'))) || []; } catch (e) { netWorthHistory = []; }
-    try { alerts = JSON.parse(localStorage.getItem(keyFor('alerts'))) || []; } catch (e) { alerts = []; }
-    try { settings = normalizeSettings(JSON.parse(localStorage.getItem(keyFor('settings')))); } catch (e) { settings = defaultSettings(); }
+    netWorthHistory = readLocalJson('histórico de patrimônio', keyFor('history'), [], { array: true });
+    alerts = readLocalJson('alertas', keyFor('alerts'), [], { array: true });
+    settings = normalizeSettings(readLocalJson('configurações', keyFor('settings'), null));
     document.getElementById('blockOverdraftCheck').checked = !!settings.blockOverdraft;
     syncTradeFormSettings();
+    flushLoadProblems();
+    await checkChainOnOpen();
   }
-  function saveHistory() {
-    try { localStorage.setItem(keyFor('history'), JSON.stringify(netWorthHistory)); } catch (e) {}
-  }
-  function saveAlerts() {
-    try { localStorage.setItem(keyFor('alerts'), JSON.stringify(alerts)); } catch (e) {}
-  }
-  function saveSettings() {
-    try { localStorage.setItem(keyFor('settings'), JSON.stringify(settings)); } catch (e) {}
-  }
-  document.getElementById('blockOverdraftCheck').addEventListener('change', (e) => {
+  function saveHistory() { return writeLocal('history', keyFor('history'), netWorthHistory); }
+  function saveAlerts() { return writeLocal('alerts', keyFor('alerts'), alerts); }
+  function saveSettings() { return writeLocal('settings', keyFor('settings'), settings); }
+  document.getElementById('blockOverdraftCheck').addEventListener('change', async (e) => {
+    const previous = settings.blockOverdraft;
     settings.blockOverdraft = e.target.checked;
-    saveSettings();
+    if (!await saveSettings()) { settings.blockOverdraft = previous; e.target.checked = previous; }
   });
 
   // Todo cálculo financeiro vem do finance-engine.js (coberto pelos testes automatizados).
@@ -880,10 +1016,12 @@
       legend.innerHTML = '<div class="empty-note">Sem dados suficientes ainda.</div>';
       return;
     }
-    bar.innerHTML = items.map(i => `<div style="width:${(i.value/total*100).toFixed(2)}%; background:${i.color};"></div>`).join('');
+    bar.innerHTML = items.map(i => `<div class="alloc-seg" data-pct="${(i.value/total*100).toFixed(2)}" data-color="${i.color}"></div>`).join('');
     legend.innerHTML = items.map(i => `
-      <div class="item"><span class="swatch" style="background:${i.color};"></span>${i.label} · ${(i.value/total*100).toFixed(1)}%</div>
+      <div class="item"><span class="swatch" data-color="${i.color}"></span>${i.label} · ${(i.value/total*100).toFixed(1)}%</div>
     `).join('');
+    paintDynamic(bar);
+    paintDynamic(legend);
   }
 
   /* ---- gráfico de patrimônio interativo ---- */
@@ -905,7 +1043,7 @@
     if (netWorthHistory.length < 2) {
       el.innerHTML = '<div class="empty-note">O histórico aparece conforme os preços forem atualizando com o app aberto.</div>';
       if (rangeSummaryEl) rangeSummaryEl.textContent = '';
-      if (hoverInfo) hoverInfo.style.display = 'none';
+      if (hoverInfo) hoverInfo.classList.add('is-hidden');
       return;
     }
 
@@ -932,15 +1070,15 @@
     const linePath = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
     const areaPath = `${linePath} L ${coords[coords.length-1][0].toFixed(1)},${h} L ${coords[0][0].toFixed(1)},${h} Z`;
     const up = points[points.length - 1] >= points[0];
-    const color = up ? '#6FCF97' : '#E08585';
+    const color = up ? 'var(--up)' : 'var(--down)';
 
     if (rangeSummaryEl) {
       rangeSummaryEl.textContent = `mín: ${fmt(min, 'usd')} · máx: ${fmt(max, 'usd')}`;
     }
 
     el.innerHTML = `
-      <div style="position:relative; width:100%; cursor:crosshair;">
-        <svg id="netWorthSvg" viewBox="0 0 ${w} ${h}" style="width:100%; height:${h}px; display:block; overflow:visible;">
+      <div class="chart-wrap">
+        <svg id="netWorthSvg" class="chart-svg chart-svg-overflow" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
           <defs>
             <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
@@ -949,11 +1087,11 @@
           </defs>
           <path d="${areaPath}" fill="url(#chartGrad)"/>
           <path d="${linePath}" fill="none" stroke="${color}" stroke-width="2"/>
-          <line id="crosshairLine" x1="0" y1="0" x2="0" y2="${h}" stroke="var(--ink-dim)" stroke-dasharray="3,3" stroke-width="1" style="display:none;"/>
-          <circle id="crosshairDot" cx="0" cy="0" r="4.5" fill="${color}" stroke="var(--bg)" stroke-width="2" style="display:none;"/>
+          <line id="crosshairLine" x1="0" y1="0" x2="0" y2="${h}" stroke="var(--ink-dim)" stroke-dasharray="3,3" stroke-width="1" class="is-hidden"/>
+          <circle id="crosshairDot" cx="0" cy="0" r="4.5" fill="${color}" stroke="var(--bg)" stroke-width="2" class="is-hidden"/>
         </svg>
       </div>
-      <div class="secondary" style="margin-top:6px; display:flex; justify-content:space-between;">
+      <div class="secondary chart-footer">
         <span>${filteredHistory.length} pontos registrados</span>
         <span>${new Date(filteredHistory[0].t).toLocaleDateString('pt-BR')} — ${new Date(filteredHistory[filteredHistory.length-1].t).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}</span>
       </div>`;
@@ -972,16 +1110,16 @@
 
       crossLine.setAttribute('x1', pt[0]);
       crossLine.setAttribute('x2', pt[0]);
-      crossLine.style.display = 'block';
+      crossLine.classList.remove('is-hidden');
 
       crossDot.setAttribute('cx', pt[0]);
       crossDot.setAttribute('cy', pt[1]);
-      crossDot.style.display = 'block';
+      crossDot.classList.remove('is-hidden');
 
       if (hoverInfo) {
-        hoverInfo.style.display = 'flex';
+        hoverInfo.classList.remove('is-hidden');
         document.getElementById('chartHoverDate').textContent = `${new Date(dataPoint.t).toLocaleString('pt-BR')}`;
-        document.getElementById('chartHoverVal').innerHTML = `${fmt(dataPoint.v, 'usd')} <span style="font-weight:normal; font-size:11px; color:var(--ink-dim);">${fmtBRLSecondary(dataPoint.v)}</span>`;
+        document.getElementById('chartHoverVal').innerHTML = `${fmt(dataPoint.v, 'usd')} <span class="chart-hover-sub">${fmtBRLSecondary(dataPoint.v)}</span>`;
       }
     }
 
@@ -991,15 +1129,15 @@
     }, { passive: true });
 
     svg.addEventListener('mouseleave', () => {
-      crossLine.style.display = 'none';
-      crossDot.style.display = 'none';
-      if (hoverInfo) hoverInfo.style.display = 'none';
+      crossLine.classList.add('is-hidden');
+      crossDot.classList.add('is-hidden');
+      if (hoverInfo) hoverInfo.classList.add('is-hidden');
     });
     svg.addEventListener('touchend', () => {
       setTimeout(() => {
-        crossLine.style.display = 'none';
-        crossDot.style.display = 'none';
-        if (hoverInfo) hoverInfo.style.display = 'none';
+        crossLine.classList.add('is-hidden');
+        crossDot.classList.add('is-hidden');
+        if (hoverInfo) hoverInfo.classList.add('is-hidden');
       }, 2500);
     });
   }
@@ -1021,9 +1159,10 @@
         <button class="del" data-id="${a.id}" aria-label="Remover alerta">${FinancIcons.svg('x', { size: 16 })}</button>
       </div>`).join('') : '<div class="empty-note">Nenhum alerta criado.</div>';
     list.querySelectorAll('.del').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
+        const previous = alerts;
         alerts = alerts.filter(a => String(a.id) !== btn.dataset.id);
-        saveAlerts();
+        if (!await saveAlerts()) alerts = previous;
         renderAlerts();
       });
     });
@@ -1035,11 +1174,18 @@
     if (!target || target <= 0) return;
 
     if ('Notification' in window && Notification.permission === 'default') {
-      try { await Notification.requestPermission(); } catch (e) {}
+      // Notificação do navegador é opcional: se o pedido de permissão falhar, o alerta continua valendo como faixa na tela.
+      try { await Notification.requestPermission(); } catch (e) { /* recurso do navegador ausente ou bloqueado */ }
     }
 
-    alerts.push({ id: Date.now() + Math.random(), asset, direction, target, triggered: false });
-    saveAlerts();
+    const created = { id: Date.now() + Math.random(), asset, direction, target, triggered: false };
+    alerts.push(created);
+    if (!await saveAlerts()) {
+      // Não gravou: o alerta não pode aparecer na lista como criado.
+      alerts = alerts.filter(a => a !== created);
+      renderAlerts();
+      return;
+    }
     document.getElementById('alertTarget').value = '';
     renderAlerts();
   });
@@ -1060,7 +1206,9 @@
               body: `${ASSETS[a.asset].name} ${a.direction === 'above' ? 'passou de' : 'caiu abaixo de'} ${fmt(a.target, 'usd')} (atual: ${fmt(price, 'usd')})`,
               icon: 'icon-192.png'
             });
-          } catch (e) {}
+          } catch (e) {
+            // Notificação do navegador é opcional (recurso ausente/bloqueado): a faixa na tela já avisou.
+          }
         }
       } else if (!met && a.triggered) {
         a.triggered = false;
@@ -1095,8 +1243,18 @@
     const btn = document.getElementById('depositBtn');
     btn.disabled = true;
     btn.textContent = 'Minerando bloco…';
+    const lengthBefore = chain.length;
     await appendBlock(chain, { kind: 'deposit', id: Date.now() + Math.random(), amount, timestamp: Date.now() });
-    saveChain();
+    if (!await saveChain()) {
+      // Não gravou: tira o bloco da memória para a tela não mostrar o depósito como salvo.
+      chain.length = lengthBefore;
+      deposits = chainToDeposits();
+      showNotice('save-chain', 'Não foi possível salvar o depósito. Ele não foi gravado; tente de novo ou faça um backup.');
+      btn.disabled = false;
+      btn.textContent = 'Adicionar saldo';
+      renderSimulator();
+      return;
+    }
     deposits = chainToDeposits();
     input.value = '';
     btn.disabled = false;
@@ -1128,16 +1286,18 @@
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', updateQtyPreview);
   });
-  document.getElementById('spreadInput').addEventListener('change', (e) => {
+  document.getElementById('spreadInput').addEventListener('change', async (e) => {
     const v = parseFloat(e.target.value);
+    const previous = settings.spreadPct;
     settings.spreadPct = Number.isFinite(v) && v >= 0 && v <= 50 ? v : FinanceEngine.DEFAULT_SPREAD_PCT;
     e.target.value = settings.spreadPct;
-    saveSettings();
     updateQtyPreview();
+    if (!await saveSettings()) { settings.spreadPct = previous; e.target.value = previous; updateQtyPreview(); }
   });
-  document.getElementById('custodySelect').addEventListener('change', (e) => {
+  document.getElementById('custodySelect').addEventListener('change', async (e) => {
+    const previous = settings.custody;
     settings.custody = e.target.value === 'foreign' ? 'foreign' : 'national';
-    saveSettings();
+    if (!await saveSettings()) { settings.custody = previous; e.target.value = previous; }
   });
 
   function renderSimulator() {
@@ -1147,7 +1307,7 @@
 
     const cashBalance = computeCashBalance();
     document.getElementById('cashBalanceValue').innerHTML = `${fmt(cashBalance,'usd')}<div class="secondary">${fmtBRLSecondary(cashBalance)}</div>`;
-    document.getElementById('cashBalanceValue').style.color = cashBalance < 0 ? 'var(--down)' : 'var(--ink)';
+    document.getElementById('cashBalanceValue').classList.toggle('is-down', cashBalance < 0);
 
     const summary = computeSummary();
     const summaryCard = document.getElementById('summaryCard');
@@ -1175,7 +1335,7 @@
       if (qty < 0.00000001 && s.realized === 0) return '';
       return `
         <div class="summary-row">
-          <div style="display:flex; align-items:center;">
+          <div class="summary-asset">
             ${avatarHtml(a)}
             <div>
               <div class="asset-name">${ASSETS[a].name}</div>
@@ -1195,10 +1355,10 @@
     if (hasHoldings || totalGain !== 0) {
       summaryCard.innerHTML += `
         <div class="totals"><div class="label">Valor total em ativos</div><div class="value">${fmt(totalValue,'usd')}<div class="secondary">${fmtBRLSecondary(totalValue)}</div></div></div>
-        <div class="totals"><div class="label">Lucro não-realizado (posições abertas)</div><div class="value" style="color:${totalUnrealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalUnrealized)}</div></div>
-        <div class="totals"><div class="label">Lucro realizado (vendas encerradas)</div><div class="value" style="color:${totalRealized >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalRealized)}</div></div>
+        <div class="totals"><div class="label">Lucro não-realizado (posições abertas)</div><div class="value ${totalUnrealized >= 0 ? 'is-up' : 'is-down'}">${fmtGain(totalUnrealized)}</div></div>
+        <div class="totals"><div class="label">Lucro realizado (vendas encerradas)</div><div class="value ${totalRealized >= 0 ? 'is-up' : 'is-down'}">${fmtGain(totalRealized)}</div></div>
         <div class="totals"><div class="label">Custos pagos (taxas + spread estimado, já incluídos no resultado)</div><div class="value">${fmt(totalFees,'usd')}</div></div>
-        <div class="totals" style="border-top:2px solid var(--line); font-weight:600;"><div class="label" style="color:var(--ink);">Resultado global líquido</div><div class="value" style="color:${totalGain >= 0 ? 'var(--up)' : 'var(--down)'}">${fmtGain(totalGain)}</div></div>`;
+        <div class="totals totals-final"><div class="label">Resultado global líquido</div><div class="value ${totalGain >= 0 ? 'is-up' : 'is-down'}">${fmtGain(totalGain)}</div></div>`;
     }
     const netWorth = cashBalance + totalValue;
     document.getElementById('netWorthValue').innerHTML = `${fmt(netWorth,'usd')}<div class="secondary">${fmtBRLSecondary(netWorth)}</div>`;
@@ -1224,7 +1384,7 @@
           <div class="main">${t.type === 'buy' ? 'Compra' : 'Venda'} de ${fmt(t.value != null ? t.value : t.qty * t.price, 'usd')} em ${ASSETS[t.asset].name}</div>
           <div class="sub">${fmtQty(t.qty, t.asset)} a ${fmt(t.price,'usd')} · saldo após: ${fmtQty(Math.max(t.balanceAfter,0), t.asset)}</div>
           ${(() => { const c = FinanceEngine.tradeCostsUSD(t); const tot = c.fee + c.spread; const fxTxt = t.fxRate ? ` · USD/BRL ${Number(t.fxRate).toFixed(4)}${t.fxSource === 'fallback' ? ' (estimado)' : ''}` : ' · USD/BRL não gravado (antigo)'; return `<div class="sub">${tot > 0 ? 'custos ' + fmt(tot, 'usd') + ' · ' : ''}${t.custody === 'foreign' ? 'exterior' : 'exchange nacional'}${fxTxt}</div>`; })()}
-          <div class="sub" style="opacity:0.6;">${new Date(t.timestamp).toLocaleString('pt-BR')} · bloco #${t._index} · hash ${t._hash ? t._hash.slice(0,12) + '…' : '—'}</div>
+          <div class="sub is-faint">${new Date(t.timestamp).toLocaleString('pt-BR')} · bloco #${t._index} · hash ${t._hash ? t._hash.slice(0,12) + '…' : '—'}</div>
         </div>
       </div>`;
     }).join('') : '<div class="empty-note">Nenhuma operação registrada ainda.</div>';
@@ -1250,31 +1410,20 @@
     const asset = document.getElementById('assetSelect').value;
     const value = parseFloat(document.getElementById('valueInput').value);
     const price = usdPrice[asset];
-    if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(price) || price <= 0) return;
-
-    let qty = value / price;
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    const costs = readTradeCosts(value);
+    const costs = readTradeCosts(Number.isFinite(value) ? value : 0);
     const totalCosts = costs.feeUSD + costs.spreadUSD;
-    if (currentType === 'sell') {
-      const availableQty = computeSummary()[asset]?.boughtQty || 0;
-      if (!Number.isFinite(availableQty) || availableQty <= 0) {
-        document.getElementById('ioStatus').textContent = 'operação bloqueada: não há saldo deste ativo em custódia para venda';
-        return;
-      }
-      // Tolera apenas o arredondamento numérico ao vender toda a posição.
-      const tolerance = Number.EPSILON * Math.max(qty, availableQty) * 4;
-      if (qty - availableQty > tolerance) {
-        document.getElementById('ioStatus').textContent = 'operação bloqueada: quantidade de venda maior que o saldo do ativo em custódia';
-        return;
-      }
-      qty = Math.min(qty, availableQty);
-    }
-
-    if (currentType === 'sell' && totalCosts >= value) {
-      document.getElementById('ioStatus').textContent = 'operação bloqueada: taxa e spread somam mais que o valor da venda';
+    // As regras de operação (venda acima do saldo, taxa maior que a venda, números positivos) vivem no engine
+    // e são as mesmas usadas na importação de backups antigos.
+    const check = FinanceEngine.validateTrade(
+      { asset, type: currentType, value, price, feeUSD: costs.feeUSD, spreadUSD: costs.spreadUSD },
+      { assetKeys: ASSET_KEYS, availableQty: computeSummary()[asset]?.boughtQty || 0 }
+    );
+    if (!check.ok) {
+      // Valor/cotação ainda não preenchidos não merecem mensagem; as demais recusas explicam o motivo.
+      if (check.code !== 'invalid_number') document.getElementById('ioStatus').textContent = check.message;
       return;
     }
+    const qty = check.qty;
 
     if (currentType === 'buy' && value + totalCosts > computeCashBalance()) {
       if (settings.blockOverdraft) {
@@ -1287,6 +1436,7 @@
     }
     submitBtn.disabled = true;
     submitBtn.textContent = 'Minerando bloco…';
+    const lengthBefore = chain.length;
     await appendBlock(chain, {
       kind: 'trade',
       id: Date.now() + Math.random(),
@@ -1302,7 +1452,16 @@
       ...currentFx(),
       timestamp: Date.now()
     });
-    saveChain();
+    if (!await saveChain()) {
+      // Não gravou: tira o bloco da memória para a tela não mostrar a operação como salva. Os campos ficam como estão.
+      chain.length = lengthBefore;
+      trades = chainToTrades();
+      showNotice('save-chain', 'Não foi possível salvar a operação. Ela não foi gravada; tente de novo ou faça um backup.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = currentType === 'buy' ? 'Registrar compra' : 'Registrar venda';
+      renderSimulator();
+      return;
+    }
     trades = chainToTrades();
     document.getElementById('valueInput').value = '';
     if (document.getElementById('feeInput')) document.getElementById('feeInput').value = '';
@@ -1317,8 +1476,9 @@
     statusEl.textContent = 'verificando…';
     const result = await verifyChainIntegrity(chain);
     statusEl.innerHTML = result.valid
-      ? `<span style="color:var(--up);">Íntegro</span> — ${chain.length} blocos verificados, encadeamento de hashes confere do início ao fim`
-      : `<span style="color:var(--down);">Adulteração detectada</span> no bloco #${result.at} (${result.reason})`;
+      ? `<span class="is-up">Íntegro</span> — ${chain.length} blocos verificados, encadeamento de hashes confere do início ao fim`
+      : `<span class="is-down">Adulteração detectada</span> no bloco #${result.at} (${result.reason})`;
+    applyChainIntegrity(result);
   });
 
   /* ---- Calculadora de Meta de Lucro (Target Profit) ---- */
@@ -1334,13 +1494,13 @@
     const calc = FinanceEngine.calculateTargetProfitScenarios(targetVal, periodicity);
 
     tableBody.innerHTML = calc.rows.map(row => `
-      <tr style="border-bottom:1px solid var(--line);">
-        <td style="padding:10px 8px; font-weight:600; color:var(--ink);">${row.cenario}</td>
-        <td style="padding:10px 8px; text-align:center; color:var(--ink-dim);">${row.rendimentoEstimado}</td>
-        <td style="padding:10px 8px; text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);">
+      <tr>
+        <td class="cell-scenario">${row.cenario}</td>
+        <td class="col-center">${row.rendimentoEstimado}</td>
+        <td class="col-right cell-capital">
           ${row.capitalUSD > 0 ? fmt(row.capitalUSD, 'usd') : '$0.00'}
         </td>
-        <td style="padding:10px 8px; text-align:right; color:var(--ink-dim);">${row.observacao}</td>
+        <td class="col-right">${row.observacao}</td>
       </tr>
     `).join('');
   }
@@ -1365,10 +1525,11 @@
   renderTargetProfit();
 
   /* ---- exportar / importar ---- */
-  document.getElementById('exportBtn').addEventListener('click', async () => {
+  // Devolve true se o backup foi preparado; false se algo impediu (o motivo já foi mostrado ao usuário).
+  async function exportBackup() {
     if (!subtleCryptoSupported) {
-      alert('Criptografia indisponível neste navegador ou contexto não seguro (precisa de HTTPS ou localhost). Operação cancelada para proteger seus dados.');
-      return;
+      showNotice('export-backup', 'Criptografia indisponível neste navegador ou contexto não seguro (precisa de HTTPS ou localhost). Operação cancelada para proteger seus dados.');
+      return false;
     }
     // Com as 12 palavras: sem senha, abre em qualquer aparelho com elas (app ainda com PIN próprio: pede senha).
     const data = { chain, deposits, netWorthHistory, alerts, settings };
@@ -1376,19 +1537,35 @@
       document.getElementById('ioStatus').textContent = 'criptografando dados com AES-256-GCM…';
       await window.exportProtected(data, 'cripito-sim:backup', `portfolio-${currentPortfolioId}-${new Date().toISOString().slice(0,10)}.json`);
     } catch (e) {
+      console.error('Falha ao exportar o backup', e);
       document.getElementById('ioStatus').textContent = 'erro ao criptografar: ' + (e.message || e);
-      return;
+      return false;
     }
     document.getElementById('ioStatus').textContent = 'backup exportado com 100% dos dados criptografados (AES-256)';
-  });
+    return true;
+  }
+  document.getElementById('exportBtn').addEventListener('click', exportBackup);
   document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+  // Mensagens ao usuário na importação (um lugar só, para a tela e os testes).
+  const IMPORT_MSG = {
+    notJson: 'Arquivo inválido: o conteúdo não é um JSON legível. Use um backup exportado por este app.',
+    unknownFormat: 'Arquivo inválido: não tem a blockchain nem a lista de operações (trades) de um backup. Use um backup exportado por este app.',
+    unreadable: 'Não foi possível ler o arquivo selecionado. Tente de novo.',
+    notSaved: 'Não foi possível salvar os dados importados. Nada foi alterado; tente de novo ou faça um backup.'
+  };
   document.getElementById('importFile').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => {
+      console.error('Falha ao ler o arquivo de importação', reader.error);
+      document.getElementById('ioStatus').textContent = IMPORT_MSG.unreadable;
+    };
     reader.onload = async () => {
       try {
-        let imported = JSON.parse(reader.result);
+        let imported;
+        try { imported = JSON.parse(reader.result); }
+        catch (parseError) { document.getElementById('ioStatus').textContent = IMPORT_MSG.notJson; return; }
         // Backups antigos usam 150 mil iterações: abrem, mas vale exportar um novo (600 mil e senha longa).
         const weakBackup = Boolean(imported && imported.encrypted && Number(imported.iterations ?? 150000) < 600000);
         if (imported && (imported.format === FinancVault.seed.BACKUP_FORMAT || imported.format === 'financ-encrypted-v1')) {
@@ -1402,7 +1579,7 @@
             imported = await decryptJSON(imported, password);
           } catch (e) {
             if (e && e.message === 'CERT_REQUIRED') {
-              alert(`Este arquivo foi criptografado com Certificado Digital deste ou de outro aparelho (ID: ${imported.certId || 'desconhecido'}). Importe o certificado em "Segurança > Certificado Digital" antes de abrir.`);
+              showNotice('import-cert', `Este arquivo foi criptografado com Certificado Digital deste ou de outro aparelho (ID: ${imported.certId || 'desconhecido'}). Importe o certificado em "Segurança > Certificado Digital" antes de abrir.`);
               document.getElementById('ioStatus').textContent = 'abertura bloqueada: certificado digital do aparelho ausente';
             } else {
               document.getElementById('ioStatus').textContent = 'PIN incorreto ou certificado do aparelho não corresponde ao arquivo';
@@ -1410,32 +1587,54 @@
             return;
           }
         }
+        let newChain;
         if (imported && Array.isArray(imported.chain)) {
           const result = await verifyChainIntegrity(imported.chain);
           if (!result.valid) {
             document.getElementById('ioStatus').textContent = `arquivo rejeitado: blockchain adulterada (bloco #${result.at})`;
             return;
           }
-          chain = imported.chain;
+          newChain = imported.chain;
         } else if (imported && Array.isArray(imported.trades)) {
-          // formato antigo (pré-blockchain): reconstrói a chain a partir de operações e depósitos
+          // formato antigo (pré-blockchain): valida cada registro com as regras de operação ANTES de reconstruir a cadeia
           const combined = [
             ...imported.trades.map(t => ({ ...t, kind: 'trade' })),
             ...(Array.isArray(imported.deposits) ? imported.deposits.map(d => ({ ...d, kind: 'deposit' })) : []),
           ];
-          chain = await rebuildChainFromDataList(combined);
-        } else { throw new Error('formato inválido'); }
+          const check = FinanceEngine.validateImportedRecords(ASSET_KEYS, combined);
+          if (check.invalid.length) {
+            document.getElementById('ioStatus').textContent = FinanceEngine.describeImportRejection(check.invalid, combined.length);
+            return;
+          }
+          newChain = await rebuildChainFromDataList(check.valid);
+        } else {
+          document.getElementById('ioStatus').textContent = IMPORT_MSG.unknownFormat;
+          return;
+        }
+        // Troca o estado e grava; se qualquer gravação falhar, volta tudo como estava (memória e cofre).
+        const before = { chain, trades, deposits, netWorthHistory, alerts, settings };
+        chain = newChain;
         trades = chainToTrades();
         deposits = chainToDeposits();
         netWorthHistory = Array.isArray(imported.netWorthHistory) ? imported.netWorthHistory : [];
         alerts = Array.isArray(imported.alerts) ? imported.alerts : [];
         settings = normalizeSettings(imported.settings || settings);
-        saveChain(); saveHistory(); saveAlerts(); saveSettings();
+        const saved = await saveChain() && await saveHistory() && await saveAlerts() && await saveSettings();
+        if (!saved) {
+          ({ chain, trades, deposits, netWorthHistory, alerts, settings } = before);
+          await saveChain(); await saveHistory(); await saveAlerts(); await saveSettings();
+          renderSimulator();
+          document.getElementById('ioStatus').textContent = IMPORT_MSG.notSaved;
+          showNotice('import-save', IMPORT_MSG.notSaved);
+          return;
+        }
+        applyChainIntegrity({ valid: true });
         renderSimulator();
         document.getElementById('ioStatus').textContent = `${trades.length} operações e ${deposits.length} depósitos importados — integridade da blockchain verificada`
           + (weakBackup ? '. Este backup usa a proteção antiga: exporte um novo backup para ficar com a proteção atual.' : '');
       } catch (err) {
-        document.getElementById('ioStatus').textContent = 'arquivo inválido — não foi possível importar';
+        console.error('Falha inesperada ao importar o backup', err);
+        document.getElementById('ioStatus').textContent = `Não foi possível importar: erro inesperado (${(err && err.message) || err}). Nada foi alterado.`;
       }
     };
     reader.readAsText(file);
@@ -1571,14 +1770,14 @@
             <div class="timeline-text">
               <div class="main">Venda de ${fmtQty(op.qty, op.asset)} (${ASSETS[op.asset].name}) · ${foreign ? 'exterior' : 'exchange nacional'}</div>
               <div class="sub">Alienação: ${brl(op.alienationBRL)} (${fmt(op.saleProceedsUsd, 'usd')} a R$ ${op.fxRate.toFixed(4).replace('.', ',')}/USD${op.fxSource === 'operation' ? '' : ', ' + (op.fxSource === 'fallback' ? 'câmbio de contingência' : 'câmbio atual estimado')})</div>
-              <div class="sub">Ganho: <span style="color:${op.gainBRL >= 0 ? 'var(--up)' : 'var(--down)'};">${brl(op.gainBRL)}</span> (${fmtGain(op.gainUSD)})${op.estimated ? ' · <strong>estimado</strong>' : ''}</div>
-              <div class="sub" style="opacity:0.6;">${new Date(op.timestamp).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (Brasília)</div>
+              <div class="sub">Ganho: <span class="${op.gainBRL >= 0 ? 'is-up' : 'is-down'}">${brl(op.gainBRL)}</span> (${fmtGain(op.gainUSD)})${op.estimated ? ' · <strong>estimado</strong>' : ''}</div>
+              <div class="sub is-faint">${new Date(op.timestamp).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (Brasília)</div>
             </div>
           </div>`;
     }).join('');
 
     const foreignBlock = (current.foreign.salesCount || fy) ? `
-      <div class="tax-notice" style="border-left-color:var(--accent);">
+      <div class="tax-notice tax-notice--accent">
         <strong>Custódia no exterior (Lei 14.754/2023; IN RFB 2.180/2024, art. 9º):</strong> 15% fixo, apuração anual na declaração, sem isenção de R$ 35.000,00 e sem DARF mensal. Perdas compensam no ano e passam aos anos seguintes.<br>
         ${current.foreign.salesCount ? `Neste mês: alienação ${brl(current.foreign.alienationBRL)}, resultado ${brl(current.foreign.netGainBRL)}.<br>` : ''}
         ${fy ? `Ano ${year}: resultado ${brl(fy.netGainBRL)}${fy.lossCarryInBRL > 0 ? ' − prejuízo de anos anteriores ' + brl(fy.lossCarryInBRL) : ''} = base ${brl(fy.taxableBaseBRL)} → imposto anual estimado <strong>${brl(fy.taxBRL)}</strong>${fy.lossCarryOutBRL > 0 ? ' · prejuízo a compensar em ' + (Number(year) + 1) + ': ' + brl(fy.lossCarryOutBRL) : ''}${fy.estimated ? ' · <strong>estimado</strong>' : ''}.` : ''}
@@ -1586,17 +1785,17 @@
 
     const content = document.getElementById('taxModalContent');
     content.innerHTML = `
-      <div style="margin-bottom:14px;">
+      <div class="field-spaced">
         <label>Selecione o Mês de Apuração</label>
         <select id="taxMonthSelect">
           ${months.length ? months.map(m => `<option value="${m}" ${m === selectedTaxMonth ? 'selected' : ''}>${labelOf(m).toUpperCase()} (${report.months[m].operations.length} vendas)</option>`).join('') : `<option value="${nowKey}">${labelOf(nowKey).toUpperCase()}</option>`}
         </select>
       </div>
 
-      ${fxWarn.length ? `<div class="tax-notice" style="border-left-color:var(--down); margin-bottom:12px;">${fxWarn.join('<br>')}</div>` : ''}
+      ${fxWarn.length ? `<div class="tax-notice tax-notice--fx">${fxWarn.join('<br>')}</div>` : ''}
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <span style="font-size:13px; font-weight:600;">Status Tributário (exchange nacional):</span>
+      <div class="tax-status-row">
+        <span class="tax-status-label">Status Tributário (exchange nacional):</span>
         ${statusBadge}
       </div>
 
@@ -1604,22 +1803,22 @@
         <div class="tax-card">
           <div class="k">TOTAL ALIENADO (NACIONAL)</div>
           <div class="v">${brl(n.alienationBRL)}</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">em R$ da data de cada venda</div>
+          <div class="hint">em R$ da data de cada venda</div>
         </div>
         <div class="tax-card">
           <div class="k">LIMITE DE ISENÇÃO</div>
-          <div class="v" style="color:var(--ink-dim);">R$ 35.000,00</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${((n.alienationBRL / LIMIT) * 100).toFixed(1)}% do teto atingido</div>
+          <div class="v is-dim">R$ 35.000,00</div>
+          <div class="hint">${((n.alienationBRL / LIMIT) * 100).toFixed(1)}% do teto atingido</div>
         </div>
         <div class="tax-card">
           <div class="k">RESULTADO REALIZADO (NACIONAL)</div>
-          <div class="v" style="color:${n.netGainBRL >= 0 ? 'var(--up)' : 'var(--down)'};">${brl(n.netGainBRL)}</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">base tributável (só ganhos, sem compensar perdas): ${brl(n.taxableGainBRL)}</div>
+          <div class="v ${n.netGainBRL >= 0 ? 'is-up' : 'is-down'}">${brl(n.netGainBRL)}</div>
+          <div class="hint">base tributável (só ganhos, sem compensar perdas): ${brl(n.taxableGainBRL)}</div>
         </div>
         <div class="tax-card">
           <div class="k">IMPOSTO ESTIMADO (15% A 22,5%)</div>
-          <div class="v" style="color:${n.taxBRL > 0 ? 'var(--down)' : 'var(--up)'};">${brl(n.taxBRL)}</div>
-          <div style="font-size:11px; color:var(--ink-dim); margin-top:2px;">${darfNote}</div>
+          <div class="v ${n.taxBRL > 0 ? 'is-down' : 'is-up'}">${brl(n.taxBRL)}</div>
+          <div class="hint">${darfNote}</div>
         </div>
       </div>
 
@@ -1636,13 +1835,13 @@
         • <strong>DeCripto (IN RFB 2.291/2025):</strong> o gatilho soma compras, vendas, permutas e transferências do mês. Volume registrado neste mês: <strong>${brl(current.decripto.volumeBRL)}</strong>${current.decripto.triggered ? ' — <strong>acima de R$ 35.000,00: pode exigir declaração mensal (operações em exchange do exterior, P2P ou DeFi)</strong>.' : ' — abaixo de R$ 35.000,00.'} O app não registra permutas nem transferências, então o volume pode estar subestimado.
       </div>
 
-      <div class="tax-notice" style="border-left-color:var(--ink-dim);">
+      <div class="tax-notice tax-notice--dim">
         <strong>Avisos:</strong><br>
         ${FinanceEngine.TAX_DISCLAIMERS.map((d, i) => `${i + 1}. ${d}`).join('<br>')}
       </div>
 
-      <div style="margin-top:16px;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Vendas registradas neste mês (${current.operations.length})</div>
+      <div class="tax-ops">
+        <div class="tax-ops-title">Vendas registradas neste mês (${current.operations.length})</div>
         ${opRows || '<div class="empty-note">Nenhuma venda registrada neste mês.</div>'}
       </div>
     `;
@@ -1655,10 +1854,10 @@
 
   function openTaxModal() {
     renderTaxModal();
-    document.getElementById('taxModalOverlay').style.display = 'flex';
+    document.getElementById('taxModalOverlay').classList.remove('is-hidden');
   }
   function closeTaxModal() {
-    document.getElementById('taxModalOverlay').style.display = 'none';
+    document.getElementById('taxModalOverlay').classList.add('is-hidden');
   }
   document.getElementById('closeTaxModalBtn').addEventListener('click', closeTaxModal);
   document.getElementById('taxModalOverlay').addEventListener('click', (e) => {
@@ -1666,176 +1865,13 @@
   });
   document.getElementById('openTaxModalBtn').addEventListener('click', openTaxModal);
 
-  /* ---- arquivo real (File System Access API) ---- */
-  const IDB_NAME = 'cripto-app-db';
-  const IDB_STORE = 'handles';
-  function idbOpen() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
+  /* ---- arquivo conectado: removido na v1.16.0 ----
+     Gravava sozinho num JSON do computador, com uma senha separada, e não funcionava no celular. O backup do kit
+     (Configurações → Seus dados: cópia de segurança, lembrete, salvar no Drive) substitui. Arquivos antigos continuam
+     abrindo em "Importar backup (JSON)" com a senha deles. Aqui só se apagam os atalhos de arquivo que ficaram guardados. */
+  try { indexedDB.deleteDatabase('cripto-app-db'); } catch (e) {
+    // Limpeza de atalhos antigos: sem IndexedDB (ou bloqueado) não há o que apagar.
   }
-  async function idbSet(key, value) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(value, key);
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
-    });
-  }
-  async function idbGet(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).get(key);
-      req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
-    });
-  }
-  async function idbDelete(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).delete(key);
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
-    });
-  }
-  function resetFileConnectionState() {
-    // cada carteira tem seu próprio arquivo conectado — precisa "esquecer" o handle anterior
-    // antes de trocar de carteira, senão a próxima gravação vai parar no arquivo errado
-    fileHandle = null;
-    connectedFilePassword = null;
-    const btn = document.getElementById('connectFileBtn');
-    btn.style.display = '';
-    btn.innerHTML = FinancIcons.svg('link', { size: 15 }) + ' Conectar arquivo JSON';
-    document.getElementById('fileStatus').textContent = '';
-  }
-  async function writeToFile() {
-    if (!fileHandle) return;
-    try {
-      if (!connectedFilePassword) {
-        document.getElementById('fileStatus').textContent = 'arquivo não salvo: defina um PIN de criptografia';
-        return;
-      }
-      const data = { chain, deposits, netWorthHistory, alerts, settings };
-      const payload = await encryptJSON(data, connectedFilePassword);
-      const writable = await fileHandle.createWritable();
-      await writable.write(JSON.stringify(payload, null, 2));
-      await writable.close();
-      document.getElementById('fileStatus').textContent = `salvo em ${fileHandle.name} · ${new Date().toLocaleTimeString('pt-BR')} (100% criptografado)`;
-    } catch (e) {
-      document.getElementById('fileStatus').textContent = 'não foi possível escrever no arquivo conectado: ' + (e.message || e);
-    }
-  }
-  async function loadFileIntoTrades() {
-    const file = await fileHandle.getFile();
-    const text = (await file.text()).trim();
-    if (!text) return;
-    try {
-      let parsed = JSON.parse(text);
-      if (parsed && parsed.encrypted) {
-        let pwd = connectedFilePassword;
-        if (!pwd) {
-          pwd = await window.askSecret('Senha do arquivo (arquivos antigos podem usar PIN):', false, true);
-          if (pwd === null) return;
-        }
-        try {
-          parsed = await decryptJSON(parsed, pwd);
-          connectedFilePassword = pwd;
-        } catch (e) {
-          if (e && e.message === 'CERT_REQUIRED') {
-            alert(`Este arquivo foi criptografado com Certificado Digital deste ou de outro aparelho (ID: ${parsed.certId || 'desconhecido'}). Importe o certificado em "Segurança > Certificado Digital" antes de abrir.`);
-            document.getElementById('fileStatus').textContent = 'bloqueado: certificado digital do aparelho ausente';
-          } else {
-            document.getElementById('fileStatus').textContent = 'PIN incorreto ou certificado do aparelho não confere';
-          }
-          return;
-        }
-      }
-      if (parsed && Array.isArray(parsed.chain)) {
-        const result = await verifyChainIntegrity(parsed.chain);
-        if (!result.valid) {
-          document.getElementById('fileStatus').textContent = `arquivo ignorado: blockchain adulterada (bloco #${result.at})`;
-          return;
-        }
-        chain = parsed.chain;
-      } else if (parsed && Array.isArray(parsed.trades)) {
-        const combined = [
-          ...parsed.trades.map(t => ({ ...t, kind: 'trade' })),
-          ...(Array.isArray(parsed.deposits) ? parsed.deposits.map(d => ({ ...d, kind: 'deposit' })) : []),
-        ];
-        chain = await rebuildChainFromDataList(combined);
-      } else { return; }
-      trades = chainToTrades();
-      deposits = chainToDeposits();
-      netWorthHistory = Array.isArray(parsed.netWorthHistory) ? parsed.netWorthHistory : [];
-      alerts = Array.isArray(parsed.alerts) ? parsed.alerts : [];
-      settings = normalizeSettings(parsed.settings || settings);
-      saveChain(); saveHistory(); saveAlerts(); saveSettings();
-      renderSimulator();
-    } catch (e) {}
-  }
-  function markConnected(name) {
-    document.getElementById('fileStatus').textContent = `conectado automaticamente a ${name} — tudo salvo sozinho`;
-    document.getElementById('connectFileBtn').style.display = 'none';
-  }
-  async function tryAutoConnect() {
-    if (!window.showSaveFilePicker) return;
-    try {
-      const handle = await idbGet('fileHandle:' + currentPortfolioId);
-      if (!handle) return;
-      const perm = await handle.queryPermission({ mode: 'readwrite' });
-      if (perm === 'granted') {
-        fileHandle = handle;
-        await loadFileIntoTrades();
-        markConnected(fileHandle.name);
-      } else {
-        fileHandle = handle;
-        { const btn = document.getElementById('connectFileBtn'); btn.innerHTML = FinancIcons.svg('link', { size: 15 }); btn.append(` Reautorizar ${handle.name}`); }
-        document.getElementById('fileStatus').textContent = 'clique uma vez para retomar a conexão automática com o arquivo';
-      }
-    } catch (e) {}
-  }
-  document.getElementById('connectFileBtn').addEventListener('click', async () => {
-    if (fileHandle) {
-      try {
-        const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
-        if (perm === 'granted') { await loadFileIntoTrades(); markConnected(fileHandle.name); writeToFile(); }
-      } catch (e) {}
-      return;
-    }
-    if (!window.showSaveFilePicker) {
-      openFileAccessModal();
-      return;
-    }
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: `portfolio-${currentPortfolioId}.json`,
-        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-      });
-      fileHandle = handle;
-      await idbSet('fileHandle:' + currentPortfolioId, handle);
-      await loadFileIntoTrades(); // se o arquivo já tinha conteúdo criptografado, pede a senha aqui
-      if (!connectedFilePassword) {
-        if (!subtleCryptoSupported) {
-          alert('Criptografia indisponível no navegador.');
-          return;
-        }
-        let pwd = await window.askSecret('Crie uma senha para o arquivo (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
-        while (!pwd) {
-          pwd = await window.askSecret('Crie uma senha para o arquivo (mínimo de 10 caracteres; pode ser uma frase):', true, true, true);
-          if (pwd === null) {
-            document.getElementById('fileStatus').textContent = 'conexão cancelada — a senha é obrigatória';
-            return;
-          }
-        }
-        connectedFilePassword = pwd;
-      }
-      await writeToFile();
-      markConnected(fileHandle.name);
-    } catch (e) {}
-  });
 
   /* ============ BUSCA DE PREÇOS (compartilhada e multi-provedor com fallback) ============ */
   const CACHED_PRICES_KEY = 'cripto-cached-prices-v2';
@@ -1848,7 +1884,9 @@
         change24h,
         time: Date.now()
       }));
-    } catch (e) {}
+    } catch (e) {
+      // Cache de cotações é descartável: sem ele só se busca a cotação de novo.
+    }
   }
 
   function loadCachedPrices() {
@@ -1862,7 +1900,9 @@
           return parsed.time;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      // Cache de cotações ilegível é descartável: ignora e busca cotações novas.
+    }
     return 0;
   }
 
@@ -1932,9 +1972,9 @@
       saveCachedPrices();
       const statusTextEl = document.getElementById('statusText');
       if (sourceName.includes('offline')) {
-        statusTextEl.innerHTML = `<span class="live" style="color:var(--warn);"><span class="live-dot"></span>preços em cache (${sourceName})</span>`;
+        statusTextEl.innerHTML = `<span class="live is-warn"><span class="live-dot"></span>preços em cache (${sourceName})</span>`;
       } else if (sourceName.includes('fallback')) {
-        statusTextEl.innerHTML = `<span class="live" style="color:var(--accent);"><span class="live-dot"></span>preços ao vivo (${sourceName})</span>`;
+        statusTextEl.innerHTML = `<span class="live is-accent"><span class="live-dot"></span>preços ao vivo (${sourceName})</span>`;
       } else {
         statusTextEl.innerHTML = '<span class="live"><span class="live-dot"></span>preços ao vivo</span>';
       }
@@ -1956,17 +1996,16 @@
   /* ============ INICIALIZAÇÃO ============ */
   (async function init() {
     try {
-      loadPortfolioList();
+      await loadPortfolioList();
       renderPortfolioSelect();
       await loadCurrentPortfolioData();
       renderConverter();
       renderSimulator();
       fetchPrices();
-      tryAutoConnect();
       setInterval(fetchPrices, 20000);
     } catch (e) {
       // nunca deixa a tela em branco: mostra o app mesmo se algo falhar, com um aviso
-      document.getElementById('appWrap').style.display = 'block';
+      document.getElementById('appWrap').classList.remove('is-hidden');
       const banner = document.getElementById('alertBanners');
       if (banner) banner.innerHTML = `<div class="alert-banner"><span>Ocorreu um erro ao carregar alguns dados (${escapeHtml(e.message || e)}). Tente recarregar a página.</span></div>`;
       console.error('Erro na inicialização:', e);

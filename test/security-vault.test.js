@@ -125,24 +125,26 @@ test('novas 12 palavras invalidam as anteriores', async () => {
 });
 
 test('preferências são cifradas, validadas e sobrevivem ao bloqueio', async () => {
+  // Kit 2.1: as preferências também guardam o lembrete de cópia; aqui interessam só as de bloqueio.
+  const lockPrefs = s => ({ autoLockMinutes: s.autoLockMinutes, lockOnHide: s.lockOnHide });
   const storage = new MemoryStorage();
   const vault = new Vault(storage, 'cambio-sim');
   await vault.create('123456', {});
-  assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: false });
+  assert.deepEqual(lockPrefs(vault.settings), { autoLockMinutes: 5, lockOnHide: false });
   await assert.rejects(vault.setSettings({ autoLockMinutes: 600 }));
   await assert.rejects(vault.setSettings({ lockOnHide: 'sim' }));
   await vault.setSettings({ autoLockMinutes: 5, lockOnHide: true });
   assert.doesNotMatch(storage.getItem(vault.storageKey), /lockOnHide|autoLockMinutes/);
   await vault.lock();
   await vault.unlock('123456');
-  assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: true });
+  assert.deepEqual(lockPrefs(vault.settings), { autoLockMinutes: 5, lockOnHide: true });
   await vault.lock();
   // Preferência adulterada no armazenamento é rejeitada pelo GCM e volta ao padrão seguro.
   const env = JSON.parse(storage.getItem(vault.storageKey));
   env.settings.ciphertext = (env.settings.ciphertext[0] === 'A' ? 'B' : 'A') + env.settings.ciphertext.slice(1);
   storage.setItem(vault.storageKey, JSON.stringify(env));
   await vault.unlock('123456');
-  assert.deepEqual(vault.settings, { autoLockMinutes: 5, lockOnHide: false });
+  assert.deepEqual(lockPrefs(vault.settings), { autoLockMinutes: 5, lockOnHide: false });
 });
 
 test('as 12 palavras continuam valendo depois de redefinir o PIN', async () => {
