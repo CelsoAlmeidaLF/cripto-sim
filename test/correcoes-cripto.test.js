@@ -293,7 +293,7 @@ function importSetup({ saveOk = true } = {}) {
   vm.runInContext(between("  // Mensagens ao usuário na importação", "  /* ---- exportação para CSV"), ctx);
   return {
     ctx, status, notices, saves: () => saves,
-    run: async content => { ctx.__content = content; onChange({ target: { files: [{}], value: '' } }); await new Promise(r => setTimeout(r, 30)); }
+    run: async content => { ctx.__content = content; onChange({ target: { files: [{}], value: '' } }); await new Promise(r => setTimeout(r, 100)); }
   };
 }
 const legacy = (trades, deposits = []) => JSON.stringify({ trades, deposits });
